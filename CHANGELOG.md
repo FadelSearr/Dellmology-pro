@@ -58,6 +58,70 @@ Implemented complete Phase 1 backend infrastructure and frontend UI for Dellmolo
 - yfinance API integration
 - Designed for 5-minute periodic updates
 
+#### 6. **Telegram Notification Service** (NEW)
+
+**Components**:
+- `apps/ml-engine/telegram_notifier.py`: Core Telegram API wrapper
+- `apps/ml-engine/telegram_service.py`: FastAPI service endpoint
+- `apps/ml-engine/alert_trigger.py`: Intelligent alert trigger engine
+- `apps/web/src/components/TelegramSettings.tsx`: Settings UI component
+- `apps/web/src/app/api/telegram-alert/route.ts`: Next.js API endpoint
+- `TELEGRAM_SETUP.md`: Complete setup and troubleshooting guide
+
+**Features**:
+- Real-time trading signal alerts (BUY/SELL with confidence)
+- Market regime change notifications
+- Whale activity detection (Z-Score > 2.5)
+- Wash sale suspicious pattern alerts
+- AI screener results (daytrade/swing modes)
+- Backtest performance reports
+- 5-minute cooldown per symbol (prevents spam)
+- Alert history tracking
+- Batch alert aggregation
+- HTML-formatted messages with emojis
+
+**Alert Types**:
+| Type | Trigger | Confidence |
+|------|---------|------------|
+| STRONG_BUY | UPS ≥ 85 | 85-100% |
+| BUY | UPS ≥ 75 in uptrend | 75% |
+| REGIME_CHANGE | Trend shift detected | 70% |
+| WHALE_ALERT | Z-Score > 2.5 | 65-80% |
+| WASH_SALE_WARNING | Suspicious volume | 60% |
+| STRONG_SELL | UPS < 30 in downtrend | 65% |
+
+**Integration Points**:
+- `/api/market-regime?symbol=BBCA` → Returns `alert: {...}` if triggered
+- `/api/telegram-alert` → Direct alert trigger endpoint
+- Market Intelligence Canvas → Integrates UPS-based alerts
+- Flow Engine → Whale detection triggers alerts
+- AI Screener → Sends daily recommendations
+
+#### 7. **Backtesting Engine** (`apps/ml-engine/backtesting.py`)
+- SMA Crossover strategy (SMA20 > SMA50 + RSI confirmation)
+- Full backtest execution with trade tracking
+- Performance metrics:
+  - Win rate percentage
+  - Profit factor (gross profit / gross loss)
+  - Sharpe ratio (risk-adjusted returns)
+  - Maximum drawdown
+  - Trade statistics (total, winners, losers)
+- Entry/exit reasoning per trade
+- Mock historical data generation
+- 300+ lines of functional testing code
+
+#### 8. **Advanced Chart Component** (`apps/web/src/components/AdvancedChart.tsx`)
+- Lightweight-charts integration (TradingView alternative)
+- Candlestick chart with OHLCV data
+- Technical indicators:
+  - SMA 20 (orange line)
+  - SMA 50 (purple line)
+  - Volume histogram
+- Interactive crosshair mode
+- Responsive sizing
+- Mock 50-hour data generation
+- Real-time price display
+
 ---
 
 ### Frontend Components

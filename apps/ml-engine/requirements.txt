@@ -4,3 +4,13 @@ yfinance
 psycopg2-binary
 sqlalchemy
 tensorflow<2.0
+google-generativeai
+requests
+httpx
+fastapi
+uvicorn
+python-dotenv
+pydantic
+scikit-learn
+ta
+scipy

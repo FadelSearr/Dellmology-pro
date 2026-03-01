@@ -37,6 +37,36 @@ services:
     networks:
       - dellmology-network
 
+  # ML Engine with Telegram Notification Service
+  ml-engine:
+    build:
+      context: ./apps/ml-engine
+      dockerfile: Dockerfile.telegram
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://admin:password@db:5432/dellmology
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - ML_ENGINE_KEY=${ML_ENGINE_KEY:-development_key_change_in_production}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LOG_LEVEL=INFO
+    ports:
+      - '8001:8001'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/ml-engine:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dellmology-network
+
 volumes:
   postgres_data:
   redis_data:
@@ -44,3 +74,4 @@ volumes:
 networks:
   dellmology-network:
     driver: bridge
+
