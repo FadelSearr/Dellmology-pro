@@ -70,8 +70,8 @@ func (ba *BrokerAnalyzer) CalculateZScore(brokerID string, currentValue int64) f
 		return 0
 	}
 
-	mean := ba.calculateMean(history)
-	stdDev := ba.calculateStdDev(history)
+	mean := ba.calculateMeanInt64(history)
+	stdDev := ba.calculateStdDevInt64(history)
 
 	if stdDev == 0 {
 		return 0

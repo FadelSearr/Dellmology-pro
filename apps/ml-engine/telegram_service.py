@@ -134,6 +134,54 @@ async def send_alert(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# --- CNN Training & Prediction API ---
+
+@app.post("/cnn/predict")
+async def api_cnn_predict(
+    payload: dict,
+    authorization: Optional[str] = Header(None)
+):
+    """Generate a CNN prediction for a symbol and store it in DB."""
+    if not await verify_auth(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    symbol = payload.get('symbol')
+    use_real = payload.get('real', True)
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    from predict import cnn_predict, connect_to_db
+    engine = connect_to_db()
+    result = cnn_predict(symbol, engine, use_real_model=use_real)
+    return JSONResponse({'success': True, 'result': result})
+
+
+@app.post("/cnn/train")
+async def api_cnn_train(
+    payload: dict,
+    authorization: Optional[str] = Header(None)
+):
+    """Trigger model training for a symbol (runs asynchronously)."""
+    if not await verify_auth(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    symbol = payload.get('symbol')
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    # Run training in background thread/process
+    import threading, subprocess
+
+    def train_job(sym: str):
+        try:
+            subprocess.run(["python", "train.py", sym], cwd=os.getcwd())
+        except Exception as e:
+            logger.error(f"Training job failed: {e}")
+
+    threading.Thread(target=train_job, args=(symbol,)).start()
+    return JSONResponse({'success': True, 'message': f'Training started for {symbol}'})
+
+
 @app.get("/telegram/history")
 async def get_alert_history(
     symbol: Optional[str] = None,

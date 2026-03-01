@@ -117,8 +117,116 @@ def store_mock_prediction(engine, symbol):
     except Exception as e:
         logging.error(f"Failed to store mock prediction for {symbol}: {e}")
 
-def main(symbol):
-    """Main function to run the data seeding and mock prediction process."""
+def cnn_predict(symbol: str, engine, use_real_model: bool = True) -> dict:
+    """Generate and store a prediction using the trained CNN model.
+
+    If a checkpoint cannot be found or an error occurs, fall back to the
+    mock prediction generator.
+
+    Returns a dictionary with the stored prediction record.
+    """
+    if not use_real_model:
+        store_mock_prediction(engine, symbol)
+        return {'status': 'mock', 'symbol': symbol}
+
+    # Attempt real model inference
+    logging.info(f"Running CNN inference for {symbol}...")
+    try:
+        import tensorflow as tf
+        from model import StockCNN
+    except ImportError as e:
+        logging.error(f"TensorFlow/model import failed: {e}")
+        store_mock_prediction(engine, symbol)
+        return {'status': 'fallback', 'symbol': symbol}
+
+    # load most recent 128 records from DB
+    with engine.connect() as conn:
+        query = text(f"SELECT open, high, low, close, volume FROM {DAILY_PRICES_TABLE} "
+                     f"WHERE symbol = :sym ORDER BY date DESC LIMIT {MOVING_WINDOW_SIZE}")
+        df = pd.read_sql(query, conn, params={"sym": symbol})
+
+    if df.empty or len(df) < MOVING_WINDOW_SIZE:
+        logging.warning("Not enough data for real prediction, using mock.")
+        store_mock_prediction(engine, symbol)
+        return {'status': 'fallback', 'symbol': symbol}
+
+    # arrange in chronological order
+    df = df.iloc[::-1]
+    window = df[FEATURES].to_numpy()
+
+    # normalize min-max per column
+    min_vals = window.min(axis=0)
+    max_vals = window.max(axis=0)
+    range_vals = max_vals - min_vals
+    range_vals[range_vals == 0] = 1
+    normalized_window = (window - min_vals) / range_vals
+
+    # reshape to (1, MOVING_WINDOW_SIZE, len(FEATURES))
+    input_array = normalized_window.reshape(1, MOVING_WINDOW_SIZE, len(FEATURES))
+
+    # create graph and restore latest checkpoint
+    checkpoint_dir = os.path.join(os.getcwd(), "checkpoints")
+    saver = None
+    prediction = None
+    tf.compat.v1.reset_default_graph()
+    with tf.compat.v1.Session() as sess:
+        # placeholders same as in train.py
+        image_ph = tf.compat.v1.placeholder(tf.float32, [None, MOVING_WINDOW_SIZE, len(FEATURES)], name="input_image")
+        label_ph = tf.compat.v1.placeholder(tf.float32, [None, 2], name="input_label")
+        dropout_ph = tf.compat.v1.placeholder(tf.float32, name="dropout_prob")
+
+        model = StockCNN(image_ph, label_ph, dropout_prob=dropout_ph)
+        saver = tf.compat.v1.train.Saver()
+
+        # restore latest checkpoint
+        try:
+            latest = tf.train.latest_checkpoint(checkpoint_dir)
+            if latest is None:
+                raise FileNotFoundError("No checkpoint found")
+            saver.restore(sess, latest)
+        except Exception as e:
+            logging.error(f"Failed to restore model: {e}")
+            store_mock_prediction(engine, symbol)
+            return {'status': 'fallback', 'symbol': symbol}
+
+        # run prediction
+        logits = sess.run(model.prediction, {image_ph: input_array, dropout_ph: 1.0})
+        probs = tf.nn.softmax(logits).eval(session=sess)[0]
+        up_conf, down_conf = float(probs[0]), float(probs[1])
+        predicted = 'UP' if up_conf > down_conf else 'DOWN'
+
+    # store prediction to DB
+    prediction_date = date.today()
+    df_rec = pd.DataFrame([{
+        'date': prediction_date,
+        'symbol': symbol,
+        'prediction': predicted,
+        'confidence_up': up_conf,
+        'confidence_down': down_conf,
+        'model_version': os.path.basename(latest) if latest else 'unknown'
+    }])
+    try:
+        query = f"""
+            INSERT INTO {PREDICTION_TABLE} (date, symbol, prediction, confidence_up, confidence_down, model_version)
+            VALUES (:date, :symbol, :prediction, :confidence_up, :confidence_down, :model_version)
+            ON CONFLICT (date, symbol) DO UPDATE
+            SET prediction = EXCLUDED.prediction,
+                confidence_up = EXCLUDED.confidence_up,
+                confidence_down = EXCLUDED.confidence_down,
+                model_version = EXCLUDED.model_version;
+        """
+        with engine.begin() as conn:
+            conn.execute(text(query), df_rec.to_dict('records'))
+        logging.info(f"Stored real prediction for {symbol}: {predicted} ({max(up_conf, down_conf):.2%})")
+    except Exception as e:
+        logging.error(f"Failed to store real prediction: {e}")
+        return {'status': 'error', 'symbol': symbol}
+
+    return {'status': 'real', 'symbol': symbol, 'prediction': predicted, 'confidence_up': up_conf, 'confidence_down': down_conf}
+
+
+def main(symbol, real: bool = True):
+    """Main function to run the data seeding and prediction process."""
     if symbol.upper() == 'ALL':
         symbols_to_process = TARGET_SYMBOLS
     else:
@@ -131,9 +239,19 @@ def main(symbol):
         # 1. Ensure historical data exists
         seed_daily_prices(engine, sym)
         
-        # 2. Store a mock prediction for today
-        store_mock_prediction(engine, sym)
+        # 2. Generate prediction (real or mock)
+        result = cnn_predict(sym, engine, use_real_model=real)
+        logging.info(f"Prediction result: {result}")
         logging.info(f"--- Finished processing {sym} ---")
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Seed historical price data and generate a CNN prediction.")
+    parser.add_argument("symbol", help="Stock symbol to process (e.g., BBCA), or 'ALL' to process all target symbols.")
+    parser.add_argument("--real", action="store_true", help="Use trained CNN model for prediction instead of mock.")
+    args = parser.parse_args()
+    main(args.symbol, real=args.real)
 
 
 if __name__ == "__main__":

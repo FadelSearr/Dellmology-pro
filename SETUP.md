@@ -51,6 +51,21 @@
 
 ## 🚀 Quick Start
 
+### Telegram Notification Service
+1. Create a bot with @BotFather on Telegram and obtain `TELEGRAM_BOT_TOKEN`.
+2. Obtain your chat ID from `getUpdates` endpoint or via bot interaction.
+3. Add the following to your `.env`:
+   ```
+   TELEGRAM_BOT_TOKEN=...
+   TELEGRAM_CHAT_ID=...
+   ML_ENGINE_KEY=your-secret-key
+   ```
+4. Start ML engine (`docker-compose up -d ml-engine` or run `python telegram_service.py`).
+5. Configure alert preferences in UI under **Settings → Telegram Alerts**.
+
+
+## 🚀 Quick Start
+
 ### Prerequisites
 - Docker & Docker Compose
 - Go 1.20+

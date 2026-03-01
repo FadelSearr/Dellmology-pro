@@ -98,6 +98,36 @@
 ---
 
 ### SECTION 1: Market Intelligence Canvas
+
+---
+
+### SECTION 6: Telegram Alerts (New)
+**What it does:** Sends real-time alerts to your Telegram account or group when trading signals and market events occur.
+
+**How to set up:**
+1. Configure your `.env` with `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`.
+2. Start the ML Engine service (`docker-compose up -d ml-engine` or run `python telegram_service.py`).
+3. Open dashboard and go to Settings → Telegram Alerts to enable alerts you want.
+
+**Usage:**
+- BUY/SELL signals with confidence bars
+- Regime change notifications
+- Whale detection and wash sale warnings
+- AI screener daily picks and backtest summaries
+- Alerts include emoji icons and formatted text
+
+**Example:**
+```
+🟢🚀 STRONG_BUY - BBCA
+Price: Rp 1,050.00
+Reason: UPS 85 + Whale accumulation detected
+Confidence: 85%
+```
+
+> Alerts have a 5‑minute cooldown per symbol to prevent spam.
+
+
+### SECTION 1: Market Intelligence Canvas
 **What it does:** Real-time buy/sell pressure analysis
 
 **Key Metrics:**
