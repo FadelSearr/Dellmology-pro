@@ -13,6 +13,8 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from typing import Optional
 import subprocess
+import requests
+import json
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -126,7 +128,41 @@ class ModelRetrainScheduler:
 
         if result.returncode != 0:
             raise RuntimeError(f"train.py failed: {result.stderr}")
-        
+        # Attempt to parse JSON metrics emitted by train.py
+        stdout = result.stdout or ''
+        metrics = None
+        try:
+            # train.py prints a JSON object like: {"training_metrics": {...}}
+            for line in stdout.splitlines()[::-1]:
+                line = line.strip()
+                if line.startswith('{') and 'training_metrics' in line:
+                    obj = json.loads(line)
+                    metrics = obj.get('training_metrics')
+                    break
+        except Exception as e:
+            logger.warning(f"Failed to parse training metrics from stdout: {e}")
+
+        # If we have metrics, POST to ML engine metrics endpoint
+        if metrics:
+            try:
+                ml_url = os.getenv('ML_ENGINE_URL', 'http://localhost:8001')
+                api_key = os.getenv('ML_ENGINE_KEY', '')
+                resp = requests.post(
+                    f"{ml_url}/metrics",
+                    headers={
+                        'Content-Type': 'application/json',
+                        'Authorization': f"Bearer {api_key}"
+                    },
+                    json=metrics,
+                    timeout=30
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"Metrics POST responded {resp.status_code}: {resp.text}")
+                else:
+                    logger.info(f"Posted training metrics for {symbol}")
+            except Exception as e:
+                logger.error(f"Failed to POST metrics for {symbol}: {e}")
+
         logger.info(f"Successfully retrained {symbol}")
         return result.stdout
 

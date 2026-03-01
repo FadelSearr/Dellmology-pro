@@ -1,5 +1,82 @@
 # 📝 Implementation Changelog - Phase 1+
 
+## Session: [March 1, 2026 - Phase 3 Enhancements]
+
+### Summary
+Added operational dashboards for model retraining and performance monitoring. New Phase 3 widgets provide real-time scheduler status, per-symbol retrain history, and ML model metrics visualization.
+
+---
+
+## ✅ Latest Implementations (Phase 3)
+
+### 1. **Retrain Status Widget**
+
+**Components**:
+- `apps/web/src/components/RetrainStatusWidget.tsx`: React component with real-time polling
+- `apps/web/src/app/api/retrain-status/route.ts`: Status proxy endpoint
+- `apps/web/src/app/api/retrain-trigger/route.ts`: Manual trigger proxy endpoint
+
+**Features**:
+- **Scheduler Status**: Shows if scheduler is running and current schedule type (daily/weekly/cron)
+- **Per-Symbol Status**: Color-coded badges (✓ green for success, ✗ red for failed)
+- **Last Retrain Time**: Human-readable time since last retrain (e.g., "4h ago")
+- **Manual Controls**: 
+  - "▶️ Retrain All" button to trigger immediate retrain for all symbols
+  - "🔄 Auto / ⏸️ Manual" toggle for auto-refresh (30s polling)
+- **Failure Details**: Expandable section showing which symbols failed and error messages
+- **Schedule Info**: Displays next scheduled retrain time and UTC hour
+
+**UI Location**: Bottom of dashboard in "Performance & Infrastructure Lab" section (2-column grid with ModelPerformanceMetrics)
+
+---
+
+### 2. **Model Performance Metrics Panel**
+
+**Components**:
+- `apps/web/src/components/ModelPerformanceMetrics.tsx`: React dashboard widget
+
+**Metrics Displayed**:
+- **Validation Accuracy**: Primary metric (e.g., 87.56%) with 7-day comparison
+- **Training Loss**: Real-time loss value (e.g., 0.0342) - lower is better
+- **Predictions Today**: Count of predictions generated across all symbols
+- **Model Size**: On-disk size in MB for storage planning
+- **7-Day Trend**: Sparkline chart showing accuracy trend over last 7 days
+- **Training Time**: Average time to train all symbols (in minutes)
+- **Last Training Date**: ISO timestamp of most recent training job
+- **Health Status**: Green indicator showing model readiness for inference
+
+**Data Source**:
+- Currently uses mock data (can be upgraded to fetch from API)
+- Grid layout with color-coded cards (green/blue/purple/yellow by metric type)
+
+**UI Location**: Right column of 2-column grid in "Performance & Infrastructure Lab" section
+
+---
+
+### 3. **Dashboard Integration Updates**
+
+**Changes** (`apps/web/src/app/page.tsx`):
+- Added imports for `RetrainStatusWidget` and `ModelPerformanceMetrics`
+- Added 2-column grid layout in Performance & Infrastructure Lab section
+- Positioned above TelegramSettings component
+- Responsive: stacks on mobile (1 column), side-by-side on desktop (2 columns)
+
+---
+
+## Technical Improvements
+
+| Feature | Benefit |
+|---------|---------|
+| **Real-time scheduler status** | Operators see if models are being retrained on schedule |
+| **Per-symbol failure tracking** | Quickly identify which models need debugging |
+| **Auto-refresh toggle** | Reduces API load if not actively monitoring |
+| **Performance sparkline** | Visual quick-check of model trend quality |
+| **Manual trigger button** | Retrains before important market opens without waiting for schedule |
+
+---
+
+# 📝 Implementation Changelog - Phase 1+
+
 ## Session: [March 1, 2026 - Phase 2 Extensions]
 
 ### Summary

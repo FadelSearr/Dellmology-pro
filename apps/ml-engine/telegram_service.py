@@ -269,6 +269,77 @@ async def get_retrain_status(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/metrics")
+async def ingest_metrics(
+    payload: dict,
+    authorization: Optional[str] = Header(None)
+):
+    """Ingest model training metrics (can be called by training job)."""
+    if not await verify_auth(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    symbol = payload.get('symbol')
+    trained_at = payload.get('trained_at')
+    training_loss = payload.get('training_loss')
+    validation_accuracy = payload.get('validation_accuracy')
+    training_time_seconds = payload.get('training_time_seconds')
+    model_size_mb = payload.get('model_size_mb')
+    notes = payload.get('notes', '')
+
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    try:
+        from predict import connect_to_db
+        engine = connect_to_db()
+        insert_sql = """
+        INSERT INTO model_metrics (symbol, trained_at, training_loss, validation_accuracy, training_time_seconds, model_size_mb, notes)
+        VALUES (:symbol, COALESCE(:trained_at, now()), :training_loss, :validation_accuracy, :training_time_seconds, :model_size_mb, :notes);
+        """
+        params = {
+            'symbol': symbol,
+            'trained_at': trained_at,
+            'training_loss': training_loss,
+            'validation_accuracy': validation_accuracy,
+            'training_time_seconds': training_time_seconds,
+            'model_size_mb': model_size_mb,
+            'notes': notes,
+        }
+        with engine.begin() as conn:
+            conn.execute(text(insert_sql), params)
+
+        return JSONResponse({'success': True})
+    except Exception as e:
+        logger.error(f"Failed to ingest metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/metrics")
+async def get_metrics(
+    symbol: Optional[str] = None,
+    limit: int = 30,
+    authorization: Optional[str] = Header(None)
+):
+    """Query recent model metrics."""
+    if not await verify_auth(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        from predict import connect_to_db
+        engine = connect_to_db()
+        with engine.connect() as conn:
+            if symbol:
+                rows = conn.execute(text("SELECT * FROM model_metrics WHERE symbol = :sym ORDER BY trained_at DESC LIMIT :lim"), {'sym': symbol, 'lim': limit}).fetchall()
+            else:
+                rows = conn.execute(text("SELECT * FROM model_metrics ORDER BY trained_at DESC LIMIT :lim"), {'lim': limit}).fetchall()
+
+        results = [dict(r) for r in rows]
+        return JSONResponse({'success': True, 'metrics': results})
+    except Exception as e:
+        logger.error(f"Failed to query metrics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/telegram/history")
 async def get_alert_history(
     symbol: Optional[str] = None,

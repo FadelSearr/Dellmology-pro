@@ -11,6 +11,8 @@ import { GlobalCorrelationMarquee } from "@/components/GlobalCorrelationMarquee"
 import { SystemHealthIndicators } from "@/components/SystemHealthIndicators";
 import { AINarrativeDisplay } from "@/components/AINarrativeDisplay";
 import { TelegramSettings } from "@/components/TelegramSettings";
+import RetrainStatusWidget from "@/components/RetrainStatusWidget";
+import ModelPerformanceMetrics from "@/components/ModelPerformanceMetrics";
 import { ProcessedTrade } from "@/types/global";
 import { useEffect, useState } from "react";
 
@@ -159,7 +161,14 @@ export default function Home() {
             </div>
             <div className={`mt-4 text-xs ${isConnected ? 'text-green-500' : 'text-red-500'}`}>
               {isConnected ? '🟢 Live connection to streamer established.' : '🔴 Disconnected from streamer.'}
-            </div>            
+            </div>
+
+            {/* Model Status & Performance */}
+            <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <RetrainStatusWidget />
+              <ModelPerformanceMetrics />
+            </div>
+            
             {/* Telegram Settings Component */}
             <div className="mt-8">
               <TelegramSettings />

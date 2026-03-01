@@ -2,6 +2,9 @@ import tensorflow as tf
 import numpy as np
 import os
 import logging
+import argparse
+import time
+import json
 
 from model import StockCNN
 
@@ -10,7 +13,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Data and Model paths
 DATA_DIR = "apps/ml-engine/processed_data"
-SYMBOL = "BBCA"
 CHECKPOINT_DIR = "apps/ml-engine/checkpoints"
 MODEL_NAME = "stock_model.ckpt"
 
@@ -22,12 +24,12 @@ DROPOUT_PROB = 0.5
 
 # --- Main Execution ---
 
-def load_data():
-    """Loads the processed feature and label files."""
-    logging.info(f"Loading data for symbol {SYMBOL} from {DATA_DIR}...")
+def load_data(symbol: str):
+    """Loads the processed feature and label files for a given symbol."""
+    logging.info(f"Loading data for symbol {symbol} from {DATA_DIR}...")
     try:
-        features_path = os.path.join(DATA_DIR, f"{SYMBOL}_features.npy")
-        labels_path = os.path.join(DATA_DIR, f"{SYMBOL}_labels.npy")
+        features_path = os.path.join(DATA_DIR, f"{symbol}_features.npy")
+        labels_path = os.path.join(DATA_DIR, f"{symbol}_labels.npy")
         
         features = np.load(features_path)
         labels = np.load(labels_path)
@@ -63,9 +65,11 @@ def get_next_batch(features, labels, index, batch_size):
         return None, None, 0 # End of epoch
     return features[start:end], labels[start:end], end
 
-def main():
+def main(symbol: str):
+    # set symbol global for data paths
+    logging.info(f"Training symbol: {symbol}")
     # 1. Load and prepare data
-    features, labels = load_data()
+    features, labels = load_data(symbol)
     if features is None:
         return
     
@@ -91,11 +95,14 @@ def main():
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True # Allow GPU memory to grow if needed
     
+    start_time = time.time()
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
         logging.info("Starting model training...")
         
         batch_index = 0
+        # track running loss
+        running_losses = []
         for i in range(TRAINING_STEPS):
             # Get the next batch of training data
             x_batch, y_batch, next_idx = get_next_batch(x_train, y_train, batch_index, BATCH_SIZE)
@@ -135,7 +142,52 @@ def main():
         })
         logging.info(f"Final accuracy on testing set: {final_accuracy:.4f}")
 
+        # compute final loss on test set
+        logits = sess.run(model.prediction, {image_ph: x_test, dropout_ph: 1.0})
+        loss_tensor = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=label_ph, logits=model.prediction))
+        final_loss = sess.run(loss_tensor, {image_ph: x_test, label_ph: y_test, dropout_ph: 1.0})
+
+    elapsed = time.time() - start_time
+
+    # determine model size (sum of checkpoint files with prefix)
+    try:
+        prefix = os.path.join(CHECKPOINT_DIR, MODEL_NAME)
+        # TensorFlow appends global_step; find latest matching files
+        files = [os.path.join(CHECKPOINT_DIR, f) for f in os.listdir(CHECKPOINT_DIR) if f.startswith(os.path.basename(MODEL_NAME))]
+        total_bytes = 0
+        for f in files:
+            try:
+                total_bytes += os.path.getsize(f)
+            except Exception:
+                pass
+        model_size_mb = total_bytes / (1024 * 1024)
+    except Exception:
+        model_size_mb = 0.0
+
     logging.info("Training finished.")
 
+    # print JSON metrics to stdout for scheduler to consume
+    metrics = {
+        'symbol': symbol,
+        'trained_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'training_loss': float(final_loss) if final_loss is not None else None,
+        'validation_accuracy': float(final_accuracy) if final_accuracy is not None else None,
+        'training_time_seconds': int(elapsed),
+        'model_size_mb': round(float(model_size_mb), 3)
+    }
+    print(json.dumps({'training_metrics': metrics}))
+    # flush
+    try:
+        import sys
+        sys.stdout.flush()
+    except Exception:
+        pass
+
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Train CNN model for a symbol')
+    parser.add_argument('symbol', help='Stock symbol to train (e.g., BBCA)')
+    parser.add_argument('--steps', type=int, default=200000, help='Number of training steps')
+    parser.add_argument('--real', action='store_true', help='Run real training (flag for compatibility)')
+    args = parser.parse_args()
+    TRAINING_STEPS = args.steps
+    main(args.symbol)
