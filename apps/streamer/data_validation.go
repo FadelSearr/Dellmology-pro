@@ -105,7 +105,7 @@ func (dv *DataValidator) ValidateDataPoint(dp DataPoint) ValidationResult {
 			MinPrice:        dp.Price,
 			MaxPrice:        dp.Price,
 			AvgPrice:        dp.Price,
-			ValidatedAt:     time.Now(),
+				LastValidatedAt: time.Now(),
 			ValidationScore: 100.0,
 		}
 		dv.goldenRecords[symbol] = &GoldenRecord{

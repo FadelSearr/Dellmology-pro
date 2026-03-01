@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import 'jest-canvas-mock';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { OrderFlowHeatmap } from '../OrderFlowHeatmap';
 
 // Mock fetch
@@ -16,15 +17,21 @@ global.fetch = jest.fn(() =>
 
 describe('OrderFlowHeatmap Component', () => {
   it('renders header and toggle', async () => {
-    render(<OrderFlowHeatmap symbol="TEST" />);
+    await act(async () => {
+      render(<OrderFlowHeatmap symbol="TEST" />);
+    });
 
-    expect(await screen.findByText('Market Depth Heatmap')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Market Depth Heatmap')).toBeInTheDocument());
+    // toggle checkbox appears after data load
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeInTheDocument());
     expect(screen.getByText('1‑min Aggregated')).toBeInTheDocument();
   });
 
   it('toggle switches aggregate state', async () => {
-    render(<OrderFlowHeatmap symbol="TEST" />);
-    const checkbox = screen.getByRole('checkbox');
+    await act(async () => {
+      render(<OrderFlowHeatmap symbol="TEST" />);
+    });
+    const checkbox = await screen.findByRole('checkbox');
     expect(checkbox).not.toBeChecked();
     fireEvent.click(checkbox);
     expect(checkbox).toBeChecked();
