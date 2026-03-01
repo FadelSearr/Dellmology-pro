@@ -51,3 +51,6 @@ c/IDX_Analyst/apps/web/node_modules/
 c/IDX_Analyst/apps/web/.next/
 c:/IDX_Analyst/apps/web/node_modules/
 c:/IDX_Analyst/apps/web/.next/
+
+.env.example
+.env
