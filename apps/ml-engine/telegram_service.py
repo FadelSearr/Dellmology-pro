@@ -504,6 +504,37 @@ async def health():
     }
 
 
+# --- Backtesting Endpoint ---
+
+@app.post("/backtest")
+async def run_backtest(payload: dict, authorization: Optional[str] = Header(None)):
+    """Run a backtest for a given symbol and date range.
+    Payload should include: symbol, start_date (YYYY-MM-DD), end_date (YYYY-MM-DD), optional strategy.
+    """
+    if not await verify_auth(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    symbol = payload.get('symbol')
+    start_date = payload.get('start_date')
+    end_date = payload.get('end_date')
+    strategy = payload.get('strategy', 'default')
+
+    if not symbol or not start_date or not end_date:
+        raise HTTPException(status_code=400, detail="symbol, start_date and end_date are required")
+
+    try:
+        from backtesting import BacktestingEngine
+        engine = BacktestingEngine()
+        result = engine.backtest_strategy(symbol, start_date, end_date, strategy)
+        # convert dataclasses to JSON-serializable dict
+        res_dict = result.__dict__.copy()
+        res_dict['trades'] = [t.__dict__ for t in result.trades]
+        return JSONResponse({'success': True, 'result': res_dict})
+    except Exception as e:
+        logger.error(f"Backtest failure: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

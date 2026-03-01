@@ -174,6 +174,11 @@ export default function Home() {
               <ModelMetricsHistory symbol={activeSymbol} limit={30} />
               <ModelAlertThresholds symbol={activeSymbol} />
             </div>
+
+            {/* Model Comparison */}
+            <div className="mt-6">
+              <CompareModelMetrics />
+            </div>
             
             {/* Telegram Settings Component */}
             <div className="mt-8">
