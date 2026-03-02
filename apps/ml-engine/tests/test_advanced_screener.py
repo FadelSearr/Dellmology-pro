@@ -1,6 +1,7 @@
 import sys, os
 # allow imports from ml-engine folder so the `dellmology` package is discoverable
-sys.path.append(os.path.join(os.getcwd(), "apps", "ml-engine"))
+proj_root = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+sys.path.append(proj_root)
 import pytest
 from dellmology.analysis.screener import AdvancedScreener, ScreenerMode
 

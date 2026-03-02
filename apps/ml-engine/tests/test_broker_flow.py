@@ -1,14 +1,15 @@
 import sys, os
 import importlib.util
-# allow imports from workspace root
-sys.path.append(os.getcwd())
 import pytest
 from datetime import date
+
+proj_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(proj_root)
 
 # load broker_flow module directly from file path
 spec = importlib.util.spec_from_file_location(
     "broker_flow",
-    os.path.join(os.getcwd(), "apps", "ml-engine", "broker_flow.py"),
+    os.path.join(proj_root, "broker_flow.py"),
 )
 broker_flow = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(broker_flow)

@@ -17,6 +17,100 @@ Complete guide for deploying, scaling, and operating Dellmology Pro in productio
 
 ---
 
+## Panduan Deployment (Bahasa Indonesia)
+
+Panduan singkat ini menjelaskan cara menyiapkan dan menjalankan Dellmology Pro menggunakan layanan gratis. Ikuti langkah berikut:
+
+1. **Mesin Utama (Local Engine)**
+   - Pastikan Go (≥1.18) terpasang dan `GOPATH` sudah dikonfigurasi. Untuk fitur ML, instal Python 3.10+ dan buat virtualenv:
+     ```bash
+     python -m venv .venv
+     source .venv/bin/activate       # Windows: .venv\Scripts\activate
+     pip install -r apps/ml-engine/requirements.txt
+     ```
+   - Ambil token Stockbit via ekstensi Chrome, kemudian export variable:
+     ```bash
+     export STOCKBIT_TOKEN="eyJhbGci..."
+     # atau simpan di file .env (dapat dipanggil oleh script start)
+     ```
+   - Siapkan database Timescale lokal saat menggunakan Docker (lihat bagian "Docker & Container Deployment" di bawah) atau pastikan cloud provider mendukung ekstensi.
+   - Jalankan tunnel agar mesin lokal dapat diakses dari internet (Vercel/front‑end akan memanggil URL ini). Contoh:
+     ```bash
+     # == Cloudflare Tunnel (direkomendasikan – gratis tanpa batas waktu) ==
+     brew install cloudflared       # macOS
+     cloudflared tunnel login      # akan membuka browser, login ke akun Cloudflare
+     cloudflared tunnel create dellmology
+     cloudflared tunnel route dns dellmology mydomain.example.com
+     # akhirnya jalankan
+     cloudflared tunnel run dellmology --url http://localhost:8080
+     # copy URL publik yang muncul, mis. https://abcd-1234.cloudflare-tunnel.com
+
+     # == Ngrok ==
+     sudo snap install ngrok      # atau unduh dari ngrok.com
+     ngrok http 8080
+     # catat URL publik (https://xxxxxx.ngrok.io)
+     ```
+   - Set variabel lingkungan `PUBLIC_ENGINE_URL` ke URL yang diberikan tunnel, baik pada `.env` untuk local run dan di Vercel env vars.
+   - Pastikan port Go/ML engine (`8080` secara default) tidak diblokir oleh firewall.
+
+2. **Database di Cloud (Supabase)**
+   - Buat akun di https://supabase.com (gratis). Pilih lokasi region terdekat.
+   - Setelah proyek dibuat, jalankan CLI:
+     ```bash
+     supabase login                      # satu kali
+     supabase projects list              # lihat ID
+     SUPABASE_URL="https://xyz.supabase.co" \
+     SUPABASE_ANON_KEY="anon-key-here" \
+     supabase db push --file db/init/01-schema.sql
+     supabase db push --file db/init/02-model-metrics.sql
+     supabase db push --file db/init/03-alert-thresholds.sql
+     supabase db push --file db/init/04-order-flow.sql
+     supabase db push --file db/init/05-broker-flow.sql
+     supabase db push --file db/init/06-exit-whale.sql
+     # jalankan semua skrip berurutan; tiap push menambahkan tabel/konfigurasi
+     ```
+   - Jika `create extension timescaledb` gagal, pastikan menggunakan proyek dengan database custom atau gunakan Timescale Cloud/VM.
+   - Di dashboard Supabase: **Settings → Database → Extensions** pastikan `timescaledb` terpasang. Jika tidak terpasang, Anda harus migrasi ke mesin yang mendukung ekstensi.
+   - Buka **Authentication → Policies** dan aktifkan row‑level security (RLS) pada tabel yang diakses oleh frontend (contoh: `SELECT` tanpa batasan untuk anon). Tambahkan kebijakan sederhana:
+     ```sql
+     CREATE POLICY "Allow anon read" ON trades
+     FOR SELECT USING (true);
+     ```
+   - Copy `SUPABASE_URL` dan `SUPABASE_ANON_KEY` (anon key, bukan service key) ke file `.env` di repo dan catat untuk Vercel.
+   - Anda juga dapat membuat akun service key untuk backend (tidak dibagikan ke klien) dan simpan di environment variable `SUPABASE_SERVICE_KEY`.
+
+3. **Dashboard (Vercel)**
+   - Masuk ke https://vercel.com dan buat proyek baru.
+   - Pilih **Import from Git** dan arahkan ke repository Anda. Setelah proses clone, pilih `apps/web` sebagai path root untuk build.
+   - Konfigurasi build command dan output:
+     ```text
+     Build Command: npm run build
+     Install Command: npm ci
+     Output Directory: .next
+     Framework: Next.js
+     ```
+   - Di bagian **Environment Variables**, masukkan kunci berikut (tambahkan baris untuk setiap variabel):
+     ```text
+     NEXT_PUBLIC_SUPABASE_URL=<your url>
+     NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+     SUPABASE_SERVICE_KEY=<service key>       # hanya untuk server-side
+     PUBLIC_ENGINE_URL=<tunnel url>
+     GEMINI_API_KEY=<your gemini key>
+     TELEGRAM_BOT_TOKEN=<token>              # optional untuk notifikasi
+     TELEGRAM_CHAT_ID=<chat id>              # optional
+     ```
+   - Pilih `Production` atau `Preview` sesuai kebutuhan.
+   - Klik **Deploy**; proses build akan mengeksekusi `npm run build` dan mengaktifkan edge API otomatis. Halaman dashboard akan tersedia di `<project>.vercel.app`.
+   - Setelah deploy pertama, vercel akan otomatis mengeluarkan URL publik untuk front end.
+
+4. **AI Narrative (Gemini)**
+   - Masuk ke https://studio.google.ai, buka menu **API & Services** dan buat kunci API baru.
+   - Simpan nilai kunci pada environment variable `GEMINI_API_KEY` baik di mesin lokal (untuk engine) dan di Vercel.
+   - Jika Anda khawatir biaya, batasi penggunaan melalui kuota pada Google Cloud Console dan selalu kirim ringkasan statistik, jangan mengirim data pasar mentah ke model.
+   - Alternatif: gunakan model lain dengan kredensial yang berbeda, cukup ubah nama package `google.genai` di kode Python jika migrasi diperlukan.
+
+> 📝 Pastikan mesin lokal selalu hidup dan terhubung. Jika mati, data akan berhenti dan dashboard menampilkan peringatan.
+
 ## Pre-Deployment Checklist
 
 ### Free Tools & Provider Setup
@@ -124,16 +218,57 @@ npm install
 
 ### Single-Node Docker Compose (Development/Small Production)
 
+The simplest way to run everything—including TimescaleDB—is via `docker-compose`. The `docker-compose.yml` included in the repo already references the `timescale/timescaledb` image.
+
+```yaml
+# snippet from docker-compose.yml
+services:
+  db:
+    image: timescale/timescaledb:latest-pg14
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: idx
+      POSTGRES_USER: idx
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  ml-engine:
+    build: ./apps/ml-engine
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://idx:${POSTGRES_PASSWORD}@db:5432/idx
+      STOCKBIT_TOKEN: ${STOCKBIT_TOKEN}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    ports:
+      - "8080:8080"
+
+  web:
+    build: ./apps/web
+    depends_on:
+      - ml-engine
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:
+```
+
+To bring the stack up:
+
 ```bash
-# Clone and configure
+# clone repo and change directory
 git clone <repo>
 cd IDX_Analyst
 
-# Copy and edit environment
+# copy example env and fill values
 cp .env.example .env
-nano .env
+# edit the .env now (see below for required variables)
 
-# Set these for production
+env vars for production/deployment:
 POSTGRES_PASSWORD=<strong-password>
 ML_ENGINE_KEY=<strong-key>
 INTERNAL_API_KEY=<strong-key>
@@ -141,16 +276,31 @@ GEMINI_API_KEY=<your-api-key>
 STOCKBIT_TOKEN=<your-token>
 TELEGRAM_BOT_TOKEN=<your-token>
 TELEGRAM_CHAT_ID=<your-chat-id>
+PUBLIC_ENGINE_URL=<public-url-from-tunnel>
+SUPABASE_URL=<from supabase>
+SUPABASE_ANON_KEY=<from supabase>
+SUPABASE_SERVICE_KEY=<service key if used>
 
-# Start all services
-docker-compose up -d
+# launch everything in detached mode
+docker-compose up -d --build
 
-# Verify services
+# confirm containers are running
 docker-compose ps
 
-# Check logs
+# inspect logs if something goes wrong
 docker-compose logs -f ml-engine
 docker-compose logs -f db
+```
+
+**Notes:**
+- The `db` service uses TimescaleDB so `CREATE EXTENSION timescaledb` will succeed automatically. If you prefer using a managed cloud db, you can remove `db` from compose and point `DATABASE_URL` to that host.
+- The `ml-engine` service is the Go+Python engine; it listens on port 8080 inside container, which is exposed to the host.
+- The `web` service builds and serves the Next.js frontend on port 3000.
+
+To tear down the stack and remove volumes:
+
+```bash
+docker-compose down --volumes
 ```
 
 **Expected output:**

@@ -29,6 +29,9 @@ func TestDetectAnomalies_Spoofing(t *testing.T) {
         Ask: 1000.5,
     }
 
+    // reference prev to avoid unused variable warning
+    _ = prev
+
     // Simplified test - check that current snapshot is valid
     if current.LastPrice <= 0 {
         t.Fatal("Expected valid price")

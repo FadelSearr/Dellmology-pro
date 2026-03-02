@@ -181,7 +181,8 @@ async def run_screening(request: ScreeningRequest):
             statistics=stats,
             ai_narrative=ai_text,
         )
-        cache_set(cache_key, final_resp, ttl=30)
+        # convert to plain data before caching (models aren't JSON serializable)
+        cache_set(cache_key, final_resp.dict(), ttl=30)
         return final_resp
     except Exception as e:
         logger.error(f"Error during screening: {e}")

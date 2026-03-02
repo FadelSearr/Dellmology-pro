@@ -1,11 +1,13 @@
 import sys, os, importlib.util
-sys.path.append(os.getcwd())
 import pytest
+
+proj_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(proj_root)
 
 # load exit_whale module directly from file path
 spec = importlib.util.spec_from_file_location(
     "exit_whale",
-    os.path.join(os.getcwd(), "apps", "ml-engine", "exit_whale.py"),
+    os.path.join(proj_root, "exit_whale.py"),
 )
 exit_whale = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(exit_whale)

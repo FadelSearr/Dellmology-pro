@@ -1,13 +1,15 @@
 import os
 import sys, importlib.util
-sys.path.append(os.getcwd())
-
 import pytest
 
-# load module directly
+# determine project root regardless of current working directory
+proj_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(proj_root)
+
+# load module directly using root-based path
 spec = importlib.util.spec_from_file_location(
     "ai_narrative",
-    os.path.join(os.getcwd(), "apps", "ml-engine", "dellmology", "intelligence", "ai_narrative.py"),
+    os.path.join(proj_root, "dellmology", "intelligence", "ai_narrative.py"),
 )
 ai_narrative = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ai_narrative)

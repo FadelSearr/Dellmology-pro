@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"sync"
 	"time"
 )
@@ -61,8 +62,9 @@ type OrderFlowAnomaly struct {
 type MarketDepthSnapshot struct {
 	Timestamp         time.Time
 	Symbol            string
-	BidLevels         map[float64]int64
-	AskLevels         map[float64]int64
+	// top levels represented as slice of maps for JSON serialization
+	BidLevels         []map[string]interface{}
+	AskLevels         []map[string]interface{}
 	TotalBidVolume    int64
 	TotalAskVolume    int64
 	MidPrice          float64
@@ -90,6 +92,17 @@ type AnomalyDetector struct {
 	spoosingThresholdMs      int
 	phantomRatioThreshold    float64
 	washTradeThreshold       int64
+}
+
+type OrderFlowTracker struct {
+	mu           sync.RWMutex
+	orderHistory map[string]*OrderBookSnapshot
+	anomalies    map[string][]OrderFlowAnomaly
+}
+
+var orderFlowTracker = &OrderFlowTracker{
+	orderHistory: make(map[string]*OrderBookSnapshot),
+	anomalies:    make(map[string][]OrderFlowAnomaly),
 }
 
 type OrderBookSnapshot struct {
@@ -583,22 +596,18 @@ func (ad *AnomalyDetector) ProcessDepthData(ctx context.Context, data DepthData)
 	}
 	snapshot.LastPrice = (snapshot.Bid + snapshot.Ask) / 2
 
+
+	// compute spread in basis points
+	spreadBps := int((snapshot.Ask - snapshot.Bid) / snapshot.LastPrice * 10000)
+
+	// build and cache depth snapshot using helper
+	depth := createDepthSnapshot(snapshot, symbol, timestamp, spreadBps)
 	ad.mu.Lock()
-	ad.marketDepthCache[symbol] = &MarketDepthSnapshot{
-		Timestamp:      timestamp,
-		Symbol:         symbol,
-		BidLevels:      bidMap,
-		AskLevels:      askMap,
-		TotalBidVolume: calculateTotalVolume(bidMap),
-		TotalAskVolume: calculateTotalVolume(askMap),
-		MidPrice:       snapshot.LastPrice,
-		BidAskSpread:   snapshot.Ask - snapshot.Bid,
-		SpreadBps:      int((snapshot.Ask - snapshot.Bid) / snapshot.LastPrice * 10000),
-	}
+	ad.marketDepthCache[symbol] = &depth
 	ad.mu.Unlock()
 
 	// Insert market depth
-	return ad.insertDepthSnapshot(*ad.marketDepthCache[symbol])
+	return ad.insertDepthSnapshot(depth)
 }
 
 // CalculateHeatmap calculates order flow heatmap
@@ -929,8 +938,4 @@ func calculateTotalVolume(levels map[float64]int64) int64 {
 	}
 	return total
 }
-		anomalies = append(anomalies, anom)
-	}
 
-	return anomalies, rows.Err()
-}

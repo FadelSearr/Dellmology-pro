@@ -1,3 +1,6 @@
+-- enable timescaledb extension (required for hypertables)
+CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+
 -- Schema for the 'config' table to store key-value pairs like the session token.
 CREATE TABLE IF NOT EXISTS config (
   key VARCHAR(255) PRIMARY KEY,
@@ -45,8 +48,11 @@ CREATE TABLE IF NOT EXISTS trades (
   trade_type VARCHAR(10) NOT NULL -- 'HAKA', 'HAKI', 'NORMAL'
 );
 
-SELECT create_hypertable('trades', 'timestamp', if_not_exists => TRUE);
+-- convert to hypertable; use explicit casts to satisfy function signature
+SELECT create_hypertable('trades'::regclass, 'timestamp'::name, if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS trades_symbol_timestamp_idx ON trades (symbol, timestamp DESC);
+
+-- additional hypertable for broker_flow added later in other file (see 05-broker-flow.sql)
 CREATE INDEX IF NOT EXISTS trades_timestamp_idx ON trades (timestamp DESC);
 
 
