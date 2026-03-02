@@ -155,7 +155,6 @@ func processDepthData(data DepthData) {
 
 	// Store order book
 	orderFlowTracker.mu.Lock()
-	oldSnapshot := orderFlowTracker.orderHistory[symbol]
 	orderFlowTracker.orderHistory[symbol] = snapshot
 	if len(orderFlowTracker.anomalies[symbol]) > 1000 {
 		orderFlowTracker.anomalies[symbol] = orderFlowTracker.anomalies[symbol][100:] // Keep last 900
@@ -164,7 +163,7 @@ func processDepthData(data DepthData) {
 	orderFlowTracker.mu.Unlock()
 
 	// Generate heatmap data
-	heatmapData := generateHeatmapData(symbol, snapshot, oldSnapshot)
+	heatmapData := generateHeatmapData(symbol, snapshot)
 
 	// Store in database
 	if len(heatmapData) > 0 {
@@ -286,7 +285,7 @@ func detectAnomalies(symbol string, current *OrderBookSnapshot) []OrderFlowAnoma
 	return anomalies
 }
 
-func generateHeatmapData(symbol string, current *OrderBookSnapshot, _previous *OrderBookSnapshot) []OrderFlowHeatmapRow {
+func generateHeatmapData(symbol string, current *OrderBookSnapshot) []OrderFlowHeatmapRow {
 	var heatmapRows []OrderFlowHeatmapRow
 
 	// Combine all price levels from both bid and ask sides
@@ -928,15 +927,5 @@ func GetAnomalies(symbol string, severity string, limit int) ([]OrderFlowAnomaly
 	}
 
 	return anomalies, rows.Err()
-}
-
-// Helper function to calculate total volume
-// calculateTotalVolume is kept for future use in analytics
-func _calculateTotalVolume(levels map[float64]int64) int64 {
-	var total int64
-	for _, vol := range levels {
-		total += vol
-	}
-	return total
 }
 

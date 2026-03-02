@@ -102,7 +102,7 @@ export const BrokerFlowTable: React.FC<BrokerFlowTableProps> = ({
                     <div className="inline-flex items-center gap-1">
                       <div className="w-12 h-1.5 bg-gray-700 rounded-full overflow-hidden">
                         <div
-                      <div className="h-full bg-linear-to-r from-blue-500 to-cyan-400"
+                          className="h-full bg-linear-to-r from-blue-500 to-cyan-400"
                           style={{ width: `${(broker.consistency_score || 0.7) * 100}%` }}
                         />
                       </div>
