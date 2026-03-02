@@ -96,6 +96,7 @@ class ScreeningResponse(BaseModel):
     results: List[StockScoreResponse]
     top_pick: Optional[StockScoreResponse]
     statistics: Dict
+    ai_narrative: Optional[str] = None
 
 
 @router.get("/health")
@@ -158,6 +159,19 @@ async def run_screening(request: ScreeningRequest):
             "avg_rr_ratio": sum(r.risk_reward_ratio for r in response_results) / (len(response_results) or 1),
         }
 
+        ai_text = None
+        if request.include_analysis:
+            try:
+                from dellmology.intelligence.ai_narrative import generate_narrative
+                ai_text = generate_narrative({
+                    "stats": stats,
+                    "top_pick": response_results[0] if response_results else None,
+                    "results": [r.dict() for r in response_results],
+                }, symbol=response_results[0].symbol if response_results else None)
+            except Exception as ex:
+                logger.warning(f"AI narrative generation failed: {ex}")
+                ai_text = None
+
         final_resp = ScreeningResponse(
             mode=request.mode,
             timestamp=datetime.now().isoformat(),
@@ -165,6 +179,7 @@ async def run_screening(request: ScreeningRequest):
             results=response_results,
             top_pick=response_results[0] if response_results else None,
             statistics=stats,
+            ai_narrative=ai_text,
         )
         cache_set(cache_key, final_resp, ttl=30)
         return final_resp

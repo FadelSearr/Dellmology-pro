@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
         price: parseFloat(price),
         bid_volume: parseInt(bid_volume || '0', 10),
         ask_volume: parseInt(ask_volume || '0', 10),
-        net_volume: parseInt(net_volume || '0', 10),
+        net_volume: parseInt(String(net_volume) || '0', 10),
         bid_ask_ratio: parseFloat(bid_ask_ratio || '1.0'),
         intensity: parseFloat(intensity || '0.5'),
         trade_count: 0,

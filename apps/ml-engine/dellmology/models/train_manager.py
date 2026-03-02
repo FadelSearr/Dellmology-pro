@@ -4,7 +4,7 @@ Handles model training and optimization
 """
 
 import logging
-from typing import Tuple
+from typing import Tuple, Dict
 import numpy as np
 
 logger = logging.getLogger(__name__)

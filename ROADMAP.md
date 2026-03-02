@@ -353,7 +353,7 @@ Karena server tidak perlu menyala 24 jam, laptop Anda menjadi pusat pemrosesan d
 o	Fungsi: Membuat laptop Anda "terlihat" oleh internet secara sementara. Jadi, saat laptop menyala, dashboard di Vercel bisa menarik data langsung dari laptop Anda.
 2. The Cloud Storage (Always Online)
 Tempat menyimpan hasil analisis agar bisa diakses kapan saja.
-•	Provider: Supabase atau Neon.tech.
+•	Provider: Supabase.
 o	Status: Gratis (PostgreSQL).
 o	Fungsi: Menyimpan hasil akhir seperti "Top 10 Akumulasi Hari Ini", "Z-Score Alert", dan "Master Key/Token".
 o	Keunggulan: Meskipun laptop mati, data hasil scan terakhir tetap bisa Anda lihat di HP via dashboard Vercel.

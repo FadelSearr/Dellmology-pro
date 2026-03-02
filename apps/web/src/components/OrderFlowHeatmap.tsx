@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface HeatmapBin {
   price: number;
@@ -83,29 +82,21 @@ export function OrderFlowHeatmap({
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{symbol} Order Flow Heatmap</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center h-96">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="border border-gray-700 rounded-lg p-4">
+        <div className="font-bold text-lg mb-4">{symbol} Order Flow Heatmap</div>
+        <div className="flex items-center justify-center h-96">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
+        </div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{symbol} Order Flow Heatmap</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-red-500">Error: {error}</div>
-        </CardContent>
-      </Card>
+      <div className="border border-red-700 rounded-lg p-4">
+        <div className="text-red-400 font-bold">Error loading heatmap</div>
+        <div className="text-sm text-gray-400 mt-2">{error}</div>
+      </div>
     );
   }
 
@@ -142,14 +133,14 @@ export function OrderFlowHeatmap({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{symbol} Order Flow Heatmap</CardTitle>
-        <CardDescription>
+    <div className="border border-gray-700 rounded-lg p-4 space-y-4">
+      <div>
+        <div className="font-bold text-lg">{symbol} Order Flow Heatmap</div>
+        <div className="text-sm text-gray-400">
           Real-time order flow visualization (Last {minutes} minutes)
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </div>
+      </div>
+      <div>
         <div className="space-y-6">
           {/* Main Heatmap */}
           <div className="border rounded-lg overflow-hidden bg-gray-50">
@@ -249,8 +240,8 @@ export function OrderFlowHeatmap({
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

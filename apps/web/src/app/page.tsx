@@ -9,6 +9,8 @@ import { OrderFlowHeatmap } from "@/components/dashboard/OrderFlowHeatmap";
 import { CnnPatternDetector } from "@/components/analysis/CnnPatternDetector";
 import DataValidationStatus from "@/components/metrics/DataValidationStatus";
 import { FlowEngine } from "@/components/dashboard/FlowEngine";
+import { BrokerFlowTable } from "@/components/BrokerFlowTable";
+import { ExitWhaleTable } from "@/components/ExitWhaleTable";
 import { GlobalCorrelationMarquee } from "@/components/dashboard/GlobalCorrelationMarquee";
 import { SystemHealthIndicators } from "@/components/monitoring/SystemHealthIndicators";
 import { AINarrativeDisplay } from "@/components/intelligence/AINarrativeDisplay";
@@ -29,6 +31,8 @@ export default function Home() {
   const [trades, setTrades] = useState<ProcessedTrade[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [activeSymbol] = useState("BBCA"); // Add state for the active symbol
+  const [brokerData, setBrokerData] = useState<any[]>([]);
+  const [aiNarrative, setAiNarrative] = useState<string | null>(null);
 
   useEffect(() => {
     const eventSource = new EventSource(STREAM_URL);
@@ -64,6 +68,37 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    async function loadBroker() {
+      try {
+        const res = await fetch(`/api/broker-flow?symbol=${activeSymbol}`);
+        const json = await res.json();
+        setBrokerData(json.brokers || []);
+      } catch (e) {
+        console.error('failed to fetch broker flow', e);
+      }
+    }
+    loadBroker();
+  }, [activeSymbol]);
+
+  // fetch screener and narrative when symbol changes
+  useEffect(() => {
+    async function loadScreen() {
+      try {
+        const res = await fetch('/api/screen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'DAYTRADE', min_score: 0.5, symbols: [activeSymbol], include_analysis: true }),
+        });
+        const json = await res.json();
+        setAiNarrative(json.ai_narrative || null);
+      } catch (e) {
+        console.error('failed to fetch screen or narrative', e);
+      }
+    }
+    loadScreen();
+  }, [activeSymbol]);
+
   return (
     <div className="bg-gray-900 text-white min-h-screen">
       <CommandBar />
@@ -77,6 +112,17 @@ export default function Home() {
           </div>
 
           {/* SECTION 1: Market Intelligence Canvas (Visual Analysis) */}
+          {aiNarrative && (
+            <section className="space-y-4">
+              <h2 className="text-2xl font-bold">🧠 AI Narrative Summary</h2>
+              <div className="bg-gray-800 p-4 rounded">
+                <pre className="whitespace-pre-wrap text-sm">{aiNarrative}</pre>
+              </div>
+            </section>
+          )}
+
+          {/* SECTION: Exit Whale Alerts */}
+          {activeSymbol && <ExitWhaleTable symbol={activeSymbol} />}
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h1 className="text-2xl font-bold">📈 Market Intelligence Canvas</h1>
@@ -112,6 +158,7 @@ export default function Home() {
           {/* SECTION 2: The Flow Engine (Bandarmology Hub) */}
           <section className="space-y-4">
             <FlowEngine symbol={activeSymbol} />
+            <BrokerFlowTable symbol={activeSymbol} data={brokerData} />
           </section>
 
           {/* SECTION 3: Neural Narrative Hub (Intelligence & Screener) */}

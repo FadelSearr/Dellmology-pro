@@ -15,6 +15,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import Config, validate_config, setup_logging
 from dellmology.analysis.screener_api import router as screener_router
+from broker_flow import main as broker_flow_main
+from exit_whale import main as exit_whale_main
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # Setup logging
 setup_logging()
@@ -42,12 +45,21 @@ app.include_router(screener_router)
 
 @app.on_event("startup")
 async def startup_event():
-    """Startup event - validate configuration"""
+    """Startup event - validate configuration and kick off scheduled jobs"""
     logger.info("Starting Dellmology API...")
     if not validate_config():
         logger.error("Configuration validation failed!")
         raise RuntimeError("Invalid configuration")
     logger.info("Configuration validated successfully")
+
+    # schedule broker flow job daily at 18:00
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(lambda: broker_flow_main(), 'cron', hour=18, minute=0, id='broker_flow')
+    # schedule exit whale detection shortly after broker flow (e.g. 18:15)
+    scheduler.add_job(lambda: exit_whale_main(), 'cron', hour=18, minute=15, id='exit_whale')
+    scheduler.start()
+    logger.info("Scheduled broker flow job (18:00 daily)")
+    logger.info("Scheduled exit whale detection job (18:15 daily)")
 
 
 @app.get("/health")

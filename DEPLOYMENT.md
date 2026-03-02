@@ -19,6 +19,53 @@ Complete guide for deploying, scaling, and operating Dellmology Pro in productio
 
 ## Pre-Deployment Checklist
 
+### Free Tools & Provider Setup
+This project is designed to run using entirely free tiers of services. The following section outlines the minimal configuration steps for each recommended provider so that the system can ingest **real‑time data** and serve the dashboard to any device.
+
+1. **The Engine (Local Machine / Laptop)**
+   - Install Go (1.18+) and set `GOPATH`.
+   - Optional Python 3.10+ environment for ML workers.
+   - Obtain Stockbit bearer token via the Chrome extension and export it as `STOCKBIT_TOKEN` in your environment or `.env` file.
+   - Choose a tunnelling service:
+     - **Cloudflare Tunnel**: install `cloudflared`, run `cloudflared tunnel run dellmology` and configure a CNAME pointing to your laptop.
+     - **Ngrok**: run `ngrok http 8001` (or whichever port your Go worker listens on) and copy the generated public URL.
+   - Set `PUBLIC_ENGINE_URL` to the tunnel URL so that Vercel can access the stream.
+
+2. **The Cloud Storage (Supabase)**
+   - Create a free project at https://supabase.com.
+   - Use the `supabase` CLI to push the schema located in `db/init`:
+     ```bash
+     supabase login
+     supabase projects create dellmology-pro
+     supabase db push --file db/init/01-schema.sql
+     supabase db push --file db/init/02-model-metrics.sql
+     supabase db push --file db/init/03-alert-thresholds.sql
+     supabase db push --file db/init/04-order-flow.sql
+     ```
+   - Copy the `SUPABASE_URL` and `SUPABASE_ANON_KEY` into your `.env` and Vercel environment variables.
+   - Enable Row-Level Security (RLS) as described in the mitigation sections (read-only anon key for frontend).
+
+3. **The Dashboard (Vercel)**
+   - Connect the `apps/web` folder to a new Vercel project.
+   - Add the following environment variables in the Vercel dashboard:
+     ```text
+     NEXT_PUBLIC_SUPABASE_URL=<your url>
+     NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+     PUBLIC_ENGINE_URL=<tunnel url>
+     GEMINI_API_KEY=<your gemini key>
+     TELEGRAM_BOT_TOKEN=<token>       # optional for alerts
+     TELEGRAM_CHAT_ID=<chat id>       # optional
+     ```
+   - Deploy; Vercel will build and serve the Next.js app. The `OrderFlowHeatmap` and `AdvancedScreener` APIs will automatically be available as edge routes.
+
+4. **Intelligence (Google AI Studio / Gemini 1.5 Flash)**
+   - Sign in to https://studio.google.ai and create an API key for Gemini.
+   - Store it in the environment (`GEMINI_API_KEY` for backend services) and feed summaries only (never raw ticks) for cost control.
+
+> ⚠️ For real‑time operation the laptop engine must be running and reachable through the tunnel. If the engine goes offline, the frontend will display stale data and a telemetry warning.
+
+## Docker & Container Deployment
+
 ### System Requirements
 
 ```bash

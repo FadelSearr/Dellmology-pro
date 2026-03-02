@@ -929,10 +929,6 @@ func calculateTotalVolume(levels map[float64]int64) int64 {
 	}
 	return total
 }
-		err := rows.Scan(&anom.Timestamp, &anom.Symbol, &anom.Type, &anom.Price, &anom.Volume, &anom.Severity, &anom.Description)
-		if err != nil {
-			return nil, err
-		}
 		anomalies = append(anomalies, anom)
 	}
 
