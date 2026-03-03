@@ -9,6 +9,7 @@ Complete API documentation for all services in Dellmology Pro.
 - [Authentication](#authentication)
 - [ML Engine APIs](#ml-engine-apis)
 - [Frontend APIs](#frontend-apis)
+- [Signal Snapshot Audit APIs](#signal-snapshot-audit-apis)
 - [Streamer APIs](#streamer-apis)
 - [Error Handling](#error-handling)
 - [Rate Limiting](#rate-limiting)
@@ -453,6 +454,99 @@ GET /api/order-flow-heatmap?symbol=BBCA&aggregation=5min
     "max_intensity": 0.92,
     "avg_intensity": 0.72
   }
+}
+```
+
+---
+
+## Signal Snapshot Audit APIs
+
+**Base URL**: `http://localhost:3000/api`
+
+These endpoints implement immutable snapshot logging using SHA-256 hash chaining (`previous_hash` -> `record_hash`) for anti-tampering audit trails.
+
+### POST /api/signal-snapshots
+
+Store a new decision snapshot with chained hashes.
+
+**Request**:
+```json
+{
+  "symbol": "BBCA",
+  "timeframe": "15m",
+  "signal": "BUY",
+  "price": 9450,
+  "unified_power_score": 88,
+  "payload": {
+    "consensus": "CONSENSUS_BULL",
+    "risk_gate": "NORMAL"
+  }
+}
+```
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "snapshot_id": 123,
+  "created_at": "2026-03-04T10:30:00Z",
+  "payload_hash": "...",
+  "previous_hash": "...",
+  "record_hash": "...",
+  "hash_version": 2
+}
+```
+
+---
+
+### GET /api/signal-snapshots
+
+Read recent snapshots.
+
+**Request**:
+```
+GET /api/signal-snapshots?limit=50
+```
+
+**Response** (200 OK):
+```json
+{
+  "snapshots": [
+    {
+      "id": 123,
+      "symbol": "BBCA",
+      "signal": "BUY",
+      "payload_hash": "...",
+      "previous_hash": "...",
+      "record_hash": "..."
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+### GET /api/signal-snapshots/integrity
+
+Verify linkage and checksum consistency in the hash chain.
+
+**Request**:
+```
+GET /api/signal-snapshots/integrity?limit=200&symbol=BBCA
+```
+
+**Response** (200 OK):
+```json
+{
+  "valid": true,
+  "symbol": "BBCA",
+  "checked_rows": 200,
+  "upgraded_rows": 200,
+  "linkage_failures": 0,
+  "checksum_failures": 0,
+  "issues": [],
+  "checked_at": "2026-03-04T10:30:00Z"
 }
 ```
 

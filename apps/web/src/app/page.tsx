@@ -2605,6 +2605,94 @@ export default function Home() {
     }
 
     setActionState({ busy: true, message: 'Sending Telegram alert...' });
+    const alertData = {
+      ups_score: Math.round(upsScore),
+      signal: signalLabel(upsScore, minUpsForLong).toUpperCase(),
+      price: currentPrice,
+      timeframe,
+      risk_gate: {
+        mode: killSwitchActive ? 'KILL_SWITCH' : 'NORMAL',
+        ihsg_change_pct: ihsgChangePct,
+        min_ups_for_long: minUpsForLong,
+      },
+      liquidity_guard: {
+        daily_volume_lots: liquidityGuard.dailyVolumeLots,
+        participation_cap_pct: liquidityGuard.capPct,
+        max_recommended_lots: liquidityGuard.maxLots,
+        warning: liquidityGuard.warning,
+      },
+      beta_guard: {
+        beta_estimate: systemicRisk.betaEstimate,
+        beta_threshold: systemicRisk.threshold,
+        systemic_risk_high: systemicRisk.high,
+      },
+      consensus: {
+        status: modelConsensus.status,
+        message: modelConsensus.message,
+        technical: modelConsensus.technical,
+        bandarmology: modelConsensus.bandarmology,
+        sentiment: modelConsensus.sentiment,
+      },
+      market_wide_net_summary: {
+        artificial_liquidity_warning: artificialLiquidity.warning,
+        reason: artificialLiquidity.reason,
+        top_buyer_share_pct: artificialLiquidity.topBuyerSharePct,
+        concentration_ratio: artificialLiquidity.concentrationRatio,
+        supporting_buyers: artificialLiquidity.supportingBuyers,
+        net_sellers: artificialLiquidity.netSellers,
+      },
+      broker_character_profile: {
+        risk_warning: brokerCharacter.warning,
+        risk_count: brokerCharacter.riskCount,
+        reason: brokerCharacter.reason,
+      },
+      volume_profile_divergence: {
+        late_entry_warning: volumeProfileDivergence.warning,
+        reason: volumeProfileDivergence.reason,
+        upper_band_volume_share_pct: volumeProfileDivergence.highBandVolumeSharePct,
+        upper_range_position_pct: volumeProfileDivergence.upperRangePositionPct,
+      },
+      roc_kill_switch: {
+        active: rocKillSwitch.active,
+        reason: rocKillSwitch.reason,
+        drop_pct: rocKillSwitch.dropPct,
+        window_points: rocKillSwitch.windowPoints,
+        haki_ratio: rocKillSwitch.hakiRatio,
+        drop_threshold_pct: ROC_KILL_SWITCH_DROP_PCT,
+      },
+      spoofing_alert: {
+        warning: spoofingAlert.warning,
+        reason: spoofingAlert.reason,
+        vanished_walls: spoofingAlert.vanishedWalls,
+        avg_lifetime_seconds: spoofingAlert.avgLifetimeSeconds,
+        wall_min_volume: SPOOFING_WALL_MIN_VOLUME,
+        max_lifetime_seconds: SPOOFING_MAX_LIFETIME_SECONDS,
+      },
+      incomplete_data: {
+        warning: incompleteData.warning,
+        reason: incompleteData.reason,
+        gap_count: incompleteData.gapCount,
+        max_gap_seconds: incompleteData.maxGapSeconds,
+        gap_threshold_seconds: INCOMPLETE_DATA_GAP_SECONDS,
+      },
+      price_cross_check: {
+        warning: priceCrossCheck.warning,
+        reason: priceCrossCheck.reason,
+        flagged_symbols: priceCrossCheck.flaggedSymbols,
+        threshold_pct: priceCrossCheck.thresholdPct,
+        max_deviation_pct: priceCrossCheck.maxDeviationPct,
+        checked_at: priceCrossCheck.checkedAt,
+      },
+      data_sanity: {
+        warning: dataSanity.warning,
+        reason: dataSanity.reason,
+        checked_points: dataSanity.checkedPoints,
+        issue_count: dataSanity.issueCount,
+        max_jump_pct: dataSanity.maxJumpPct,
+        checked_at: dataSanity.checkedAt,
+      },
+    };
+
     try {
       const response = await fetch('/api/telegram-alert', {
         method: 'POST',
@@ -2612,100 +2700,52 @@ export default function Home() {
         body: JSON.stringify({
           type: 'trading',
           symbol: activeSymbol,
-          data: {
-            ups_score: Math.round(upsScore),
-            signal: signalLabel(upsScore, minUpsForLong).toUpperCase(),
-            price: currentPrice,
-            timeframe,
-            risk_gate: {
-              mode: killSwitchActive ? 'KILL_SWITCH' : 'NORMAL',
-              ihsg_change_pct: ihsgChangePct,
-              min_ups_for_long: minUpsForLong,
-            },
-            liquidity_guard: {
-              daily_volume_lots: liquidityGuard.dailyVolumeLots,
-              participation_cap_pct: liquidityGuard.capPct,
-              max_recommended_lots: liquidityGuard.maxLots,
-              warning: liquidityGuard.warning,
-            },
-            beta_guard: {
-              beta_estimate: systemicRisk.betaEstimate,
-              beta_threshold: systemicRisk.threshold,
-              systemic_risk_high: systemicRisk.high,
-            },
-            consensus: {
-              status: modelConsensus.status,
-              message: modelConsensus.message,
-              technical: modelConsensus.technical,
-              bandarmology: modelConsensus.bandarmology,
-              sentiment: modelConsensus.sentiment,
-            },
-            market_wide_net_summary: {
-              artificial_liquidity_warning: artificialLiquidity.warning,
-              reason: artificialLiquidity.reason,
-              top_buyer_share_pct: artificialLiquidity.topBuyerSharePct,
-              concentration_ratio: artificialLiquidity.concentrationRatio,
-              supporting_buyers: artificialLiquidity.supportingBuyers,
-              net_sellers: artificialLiquidity.netSellers,
-            },
-            broker_character_profile: {
-              risk_warning: brokerCharacter.warning,
-              risk_count: brokerCharacter.riskCount,
-              reason: brokerCharacter.reason,
-            },
-            volume_profile_divergence: {
-              late_entry_warning: volumeProfileDivergence.warning,
-              reason: volumeProfileDivergence.reason,
-              upper_band_volume_share_pct: volumeProfileDivergence.highBandVolumeSharePct,
-              upper_range_position_pct: volumeProfileDivergence.upperRangePositionPct,
-            },
-            roc_kill_switch: {
-              active: rocKillSwitch.active,
-              reason: rocKillSwitch.reason,
-              drop_pct: rocKillSwitch.dropPct,
-              window_points: rocKillSwitch.windowPoints,
-              haki_ratio: rocKillSwitch.hakiRatio,
-              drop_threshold_pct: ROC_KILL_SWITCH_DROP_PCT,
-            },
-            spoofing_alert: {
-              warning: spoofingAlert.warning,
-              reason: spoofingAlert.reason,
-              vanished_walls: spoofingAlert.vanishedWalls,
-              avg_lifetime_seconds: spoofingAlert.avgLifetimeSeconds,
-              wall_min_volume: SPOOFING_WALL_MIN_VOLUME,
-              max_lifetime_seconds: SPOOFING_MAX_LIFETIME_SECONDS,
-            },
-            incomplete_data: {
-              warning: incompleteData.warning,
-              reason: incompleteData.reason,
-              gap_count: incompleteData.gapCount,
-              max_gap_seconds: incompleteData.maxGapSeconds,
-              gap_threshold_seconds: INCOMPLETE_DATA_GAP_SECONDS,
-            },
-            price_cross_check: {
-              warning: priceCrossCheck.warning,
-              reason: priceCrossCheck.reason,
-              flagged_symbols: priceCrossCheck.flaggedSymbols,
-              threshold_pct: priceCrossCheck.thresholdPct,
-              max_deviation_pct: priceCrossCheck.maxDeviationPct,
-              checked_at: priceCrossCheck.checkedAt,
-            },
-            data_sanity: {
-              warning: dataSanity.warning,
-              reason: dataSanity.reason,
-              checked_points: dataSanity.checkedPoints,
-              issue_count: dataSanity.issueCount,
-              max_jump_pct: dataSanity.maxJumpPct,
-              checked_at: dataSanity.checkedAt,
-            },
-          },
+          data: alertData,
         }),
       });
       const body = (await response.json()) as { success?: boolean; error?: string };
       if (!response.ok || !body.success) {
         throw new Error(body.error || 'Failed to send alert');
       }
-      setActionState({ busy: false, message: `Telegram sent for ${activeSymbol}` });
+
+      const snapshotSignal: 'BUY' | 'SELL' | 'NEUTRAL' =
+        modelConsensus.status === 'CONSENSUS_BULL'
+          ? 'BUY'
+          : modelConsensus.status === 'CONSENSUS_BEAR'
+            ? 'SELL'
+            : 'NEUTRAL';
+
+      let snapshotLogged = false;
+      try {
+        const snapshotResponse = await fetch('/api/signal-snapshots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol: activeSymbol,
+            timeframe,
+            signal: snapshotSignal,
+            price: currentPrice,
+            unified_power_score: Math.round(upsScore),
+            payload: {
+              ...alertData,
+              snapshot_source: 'telegram-alert',
+            },
+          }),
+        });
+        if (snapshotResponse.ok) {
+          const snapshotBody = (await snapshotResponse.json()) as { success?: boolean };
+          snapshotLogged = snapshotBody.success === true;
+        }
+      } catch {
+        snapshotLogged = false;
+      }
+
+      setActionState({
+        busy: false,
+        message: snapshotLogged
+          ? `Telegram sent for ${activeSymbol} | Snapshot logged`
+          : `Telegram sent for ${activeSymbol} | Snapshot log warning`,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to send alert';
       setActionState({ busy: false, message: `Telegram failed: ${message}` });
