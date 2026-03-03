@@ -323,6 +323,15 @@ interface ChampionChallengerState {
   comparedAt: string | null;
 }
 
+interface NewsImpactState {
+  warning: boolean;
+  riskLabel: 'LOW' | 'MEDIUM' | 'HIGH';
+  stressScore: number;
+  penaltyUps: number;
+  redFlags: string[];
+  checkedAt: string | null;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -1025,6 +1034,7 @@ function RightSidebar({
   priceCrossCheck,
   dataSanity,
   championChallenger,
+  newsImpact,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
@@ -1037,6 +1047,7 @@ function RightSidebar({
   priceCrossCheck: PriceCrossCheckState;
   dataSanity: DataSanityState;
   championChallenger: ChampionChallengerState;
+  newsImpact: NewsImpactState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -1203,6 +1214,18 @@ function RightSidebar({
             {`Ch ${championChallenger.championVersion || '-'} vs Cl ${championChallenger.challengerVersion || '-'}`}
           </div>
           {championChallenger.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{championChallenger.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              newsImpact.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {newsImpact.warning ? 'News-Impact Overlay Risk' : 'News-Impact Overlay Normal'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Stress ${newsImpact.stressScore.toFixed(1)} | UPS-${newsImpact.penaltyUps.toFixed(0)} | ${newsImpact.riskLabel}`}
+          </div>
+          {newsImpact.redFlags.length > 0 ? <div className="text-[9px] text-slate-500 font-mono mt-1">{newsImpact.redFlags.slice(0, 2).join(' | ')}</div> : null}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1768,6 +1791,14 @@ export default function Home() {
     challengerAvgReturnPct: 0,
     comparedAt: null,
   });
+  const [newsImpact, setNewsImpact] = useState<NewsImpactState>({
+    warning: false,
+    riskLabel: 'LOW',
+    stressScore: 0,
+    penaltyUps: 0,
+    redFlags: [],
+    checkedAt: null,
+  });
   const bidWallAgesRef = useRef<Map<number, number>>(new Map());
   const spoofingStreakRef = useRef(0);
 
@@ -1823,6 +1854,7 @@ export default function Home() {
       )
         .then((response) => (response.ok ? response.json() : null))
         .catch(() => null),
+      fetch(`/api/news-impact?symbol=${activeSymbol}`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]);
 
     const marketIntel = requests[0] as MarketIntelResponse | null;
@@ -1901,6 +1933,14 @@ export default function Home() {
         reason?: string;
       };
       compared_at?: string;
+    } | null;
+    const newsOverlay = requests[16] as {
+      success?: boolean;
+      stress_score?: number;
+      penalty_ups?: number;
+      risk_label?: 'LOW' | 'MEDIUM' | 'HIGH';
+      red_flags?: string[];
+      checked_at?: string;
     } | null;
 
     const snapshotRows = (snapshots?.snapshots || [])
@@ -1992,7 +2032,21 @@ export default function Home() {
       setHeatmapData(normalized);
     }
 
-    const nextUps = Number(marketIntel?.unified_power_score?.score || 88);
+    const rawUps = Number(marketIntel?.unified_power_score?.score || 88);
+    const newsStressScore = Number(newsOverlay?.stress_score || 0);
+    const newsPenaltyUps = Math.max(0, Number(newsOverlay?.penalty_ups || 0));
+    const newsRiskLabel = newsOverlay?.risk_label || 'LOW';
+    const newsRedFlags = (newsOverlay?.red_flags || []).filter((flag): flag is string => typeof flag === 'string' && flag.length > 0);
+    const newsImpactWarning = newsRiskLabel === 'HIGH' || newsPenaltyUps >= 12;
+    setNewsImpact({
+      warning: newsImpactWarning,
+      riskLabel: newsRiskLabel,
+      stressScore: newsStressScore,
+      penaltyUps: newsPenaltyUps,
+      redFlags: newsRedFlags,
+      checkedAt: newsOverlay?.checked_at || null,
+    });
+    const nextUps = Math.max(0, rawUps - newsPenaltyUps);
     const nextTotalVolume = Number(marketIntel?.metrics?.total_volume || 0);
     setUpsScore(nextUps);
     setMarketTotalVolume(nextTotalVolume > 0 ? nextTotalVolume : null);
@@ -2303,12 +2357,13 @@ export default function Home() {
         `Cross-Check: ${crossCheckWarning ? 'LOCK' : 'OK'}\n` +
         `Data Sanity: ${sanityWarning ? 'DATA CONTAMINATED' : 'PASS'}\n` +
         `Champion-Challenger: ${championDriftWarning ? 'DRIFT WARNING' : 'STABLE'}\n` +
+        `News Overlay: ${newsImpactWarning ? `RISK (${newsRiskLabel}, UPS-${newsPenaltyUps.toFixed(0)})` : 'NORMAL'}\n` +
         `RoC Kill-Switch: ${rocCritical ? 'CRITICAL: VOLATILITY SPIKE' : 'Normal'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -2653,6 +2708,14 @@ export default function Home() {
       return;
     }
 
+    if (newsImpact.warning && newsImpact.riskLabel === 'HIGH' && modelConsensus.status === 'CONSENSUS_BULL') {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: news-impact stress HIGH (UPS penalty ${newsImpact.penaltyUps.toFixed(0)})`,
+      });
+      return;
+    }
+
     if (championChallenger.warning && championChallenger.swapRecommended && modelConsensus.status === 'CONSENSUS_BULL') {
       setActionState({
         busy: false,
@@ -2809,6 +2872,14 @@ export default function Home() {
         challenger_avg_return_pct: championChallenger.challengerAvgReturnPct,
         compared_at: championChallenger.comparedAt,
       },
+      news_impact: {
+        warning: newsImpact.warning,
+        risk_label: newsImpact.riskLabel,
+        stress_score: newsImpact.stressScore,
+        penalty_ups: newsImpact.penaltyUps,
+        red_flags: newsImpact.redFlags,
+        checked_at: newsImpact.checkedAt,
+      },
     };
 
     try {
@@ -2925,6 +2996,9 @@ export default function Home() {
     dataSanity.issueCount,
     dataSanity.maxJumpPct,
     dataSanity.checkedAt,
+    newsImpact.warning,
+    newsImpact.riskLabel,
+    newsImpact.penaltyUps,
     championChallenger.warning,
     championChallenger.reason,
     championChallenger.winner,
@@ -2936,6 +3010,12 @@ export default function Home() {
     championChallenger.championAvgReturnPct,
     championChallenger.challengerAvgReturnPct,
     championChallenger.comparedAt,
+    newsImpact.warning,
+    newsImpact.riskLabel,
+    newsImpact.stressScore,
+    newsImpact.penaltyUps,
+    newsImpact.redFlags,
+    newsImpact.checkedAt,
     priceCrossCheck.warning,
     priceCrossCheck.reason,
     priceCrossCheck.flaggedSymbols,
@@ -3220,6 +3300,7 @@ export default function Home() {
           priceCrossCheck={priceCrossCheck}
           dataSanity={dataSanity}
           championChallenger={championChallenger}
+          newsImpact={newsImpact}
         />
       </div>
       {!combatMode.active ? (
