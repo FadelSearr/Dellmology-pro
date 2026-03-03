@@ -202,6 +202,12 @@ interface CoolingOffState {
   reason: string | null;
 }
 
+interface AdversarialNarrative {
+  bullish: string;
+  bearish: string;
+  source: 'ai' | 'fallback';
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -313,6 +319,22 @@ function signalLabel(ups: number, minBuyScore = 60) {
   if (ups <= 30) return 'Strong Sell';
   if (ups <= 45) return 'Sell';
   return 'Neutral';
+}
+
+function extractAdversarialNarrative(rawNarrative: string): { bullish: string; bearish: string } {
+  const text = rawNarrative || '';
+  const bearishMatch = text.match(/Risiko Bearish \(Counter-Case\):([\s\S]*)$/i) || text.match(/Bearish Counter-Case:\s*([\s\S]*)$/i);
+  const bullishText = text
+    .replace(/3\)\s*Risiko Bearish \(Counter-Case\):[\s\S]*$/i, '')
+    .replace(/🛡️\s*Bearish Counter-Case:[\s\S]*$/i, '')
+    .trim();
+
+  const bearishText = bearishMatch?.[1]?.trim() || 'Belum ada counter-case eksplisit dari AI. Gunakan mode defensif dan validasi multi-timeframe.';
+
+  return {
+    bullish: bullishText || 'Belum ada narasi bullish dari AI.',
+    bearish: bearishText,
+  };
 }
 
 function StatusDot({ status, label }: { status: Tone; label: string }) {
@@ -819,6 +841,7 @@ function RightSidebar({ brokers, zData }: { brokers: BrokerRow[]; zData: ZScoreP
 
 function BottomPanel({
   narrative,
+  adversarialNarrative,
   confidence,
   latencyMs,
   activeSymbol,
@@ -856,6 +879,7 @@ function BottomPanel({
   coolingOff,
 }: {
   narrative: string;
+  adversarialNarrative: AdversarialNarrative;
   confidence: ModelConfidenceResponse | null;
   latencyMs: number;
   activeSymbol: string;
@@ -907,7 +931,20 @@ function BottomPanel({
             </span>
           }
         />
-        <div className="flex-1 p-3 font-mono text-xs text-slate-300 overflow-y-auto leading-relaxed whitespace-pre-line">{narrative}</div>
+        <div className="flex-1 p-3 overflow-y-auto space-y-2">
+          <div className="font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-line border border-slate-800 rounded p-2 bg-slate-900/40">{narrative}</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="border border-emerald-500/30 rounded p-2 bg-emerald-500/5">
+              <div className="text-[9px] uppercase tracking-wider text-emerald-400 font-bold mb-1">Bullish Case</div>
+              <div className="font-mono text-[10px] text-emerald-100/90 whitespace-pre-line leading-relaxed">{adversarialNarrative.bullish}</div>
+            </div>
+            <div className="border border-rose-500/30 rounded p-2 bg-rose-500/5">
+              <div className="text-[9px] uppercase tracking-wider text-rose-400 font-bold mb-1">Bearish Case</div>
+              <div className="font-mono text-[10px] text-rose-100/90 whitespace-pre-line leading-relaxed">{adversarialNarrative.bearish}</div>
+            </div>
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono">{`Adversarial Source: ${adversarialNarrative.source.toUpperCase()}`}</div>
+        </div>
       </div>
 
       <div className="w-72 flex flex-col border-r border-slate-800 bg-slate-900">
@@ -1141,6 +1178,11 @@ export default function Home() {
   const [modelConfidence, setModelConfidence] = useState<ModelConfidenceResponse | null>(null);
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [narrative, setNarrative] = useState('System: Waiting for market stream...');
+  const [adversarialNarrative, setAdversarialNarrative] = useState<AdversarialNarrative>({
+    bullish: 'Menunggu analisis AI untuk bullish case...',
+    bearish: 'Menunggu analisis AI untuk bearish case...',
+    source: 'fallback',
+  });
   const [latencyMs, setLatencyMs] = useState(12);
   const [globalData, setGlobalData] = useState<GlobalCorrelationResponse | null>(null);
   const [runtimeRiskConfig, setRuntimeRiskConfig] = useState<RuntimeRiskConfig | null>(null);
@@ -1356,6 +1398,9 @@ export default function Home() {
     const runtimeIhsgDrop = Number(runtimeConfig?.config?.ihsg_risk_trigger_pct ?? KILL_SWITCH_IHSG_DROP_PCT);
     const runtimeNormalUps = Number(runtimeConfig?.config?.ups_min_normal ?? NORMAL_MIN_UPS);
     const runtimeRiskUps = Number(runtimeConfig?.config?.ups_min_risk ?? KILL_SWITCH_MIN_UPS);
+    const runtimeSystemicRiskBetaThreshold = Number(
+      runtimeConfig?.config?.systemic_risk_beta_threshold ?? SYSTEMIC_RISK_BETA_THRESHOLD,
+    );
     const killSwitchActive = ihsgChangePct <= runtimeIhsgDrop;
     const minUpsForLong = killSwitchActive ? runtimeRiskUps : runtimeNormalUps;
 
@@ -1397,9 +1442,21 @@ export default function Home() {
       .map((row) => `${row.broker} ${formatCompactIDR(row.net)}`)
       .join(', ');
 
+    const whalesNarrative = brokerRows
+      .filter((row) => row.type === 'Whale' && row.net > 0)
+      .slice(0, 5)
+      .map((row) => ({
+        broker: row.broker,
+        net_value: row.net,
+        z_score: row.z,
+      }));
+
     const volClass = marketIntel?.volatility?.classification || 'MEDIUM';
     const confLabel = confidence?.confidence_label || 'MEDIUM';
     const coolingActive = Boolean(coolingState?.active);
+    const betaDenominator = Math.max(0.2, Math.abs(ihsgChangePct));
+    const betaEstimateLocal = Math.abs(deltaPct) / betaDenominator;
+    const systemicRiskHighLocal = betaEstimateLocal > runtimeSystemicRiskBetaThreshold;
     const riskGateLabel = killSwitchActive
       ? `KILL-SWITCH ACTIVE (IHSG ${ihsgChangePct.toFixed(2)}%, min UPS ${minUpsForLong})`
       : `NORMAL (${minUpsForLong} UPS gate)`;
@@ -1414,6 +1471,52 @@ export default function Home() {
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
         `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
+
+    try {
+      const narrativeResponse = await fetch('/api/narrative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'broker',
+          symbol: activeSymbol,
+          data: {
+            whales: whalesNarrative,
+            consistency: brokerRows.length > 0 ? brokerRows.filter((row) => row.net > 0).length / brokerRows.length : 0,
+            wash_sale_score: Math.max(0, 100 - Math.min(100, nextUps)),
+          },
+        }),
+      });
+
+      if (narrativeResponse.ok) {
+        const narrativeBody = (await narrativeResponse.json()) as { narrative?: string };
+        const extracted = extractAdversarialNarrative(narrativeBody.narrative || '');
+        setAdversarialNarrative({
+          bullish: extracted.bullish,
+          bearish: extracted.bearish,
+          source: 'ai',
+        });
+      } else {
+        setAdversarialNarrative({
+          bullish: `Bias utama: ${signalLabel(nextUps, minUpsForLong)} | Whale: ${topWhales || 'belum dominan'}.`,
+          bearish: coolingActive
+            ? 'Cooling-off aktif, semua rekomendasi ditahan sementara sampai lock selesai.'
+            : systemicRiskHighLocal
+              ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
+              : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.',
+          source: 'fallback',
+        });
+      }
+    } catch {
+      setAdversarialNarrative({
+        bullish: `Bias utama: ${signalLabel(nextUps, minUpsForLong)} | Whale: ${topWhales || 'belum dominan'}.`,
+        bearish: coolingActive
+          ? 'Cooling-off aktif, semua rekomendasi ditahan sementara sampai lock selesai.'
+          : systemicRiskHighLocal
+            ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
+            : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.',
+        source: 'fallback',
+      });
+    }
   }, [activeSymbol, timeframe, marketData]);
 
   useEffect(() => {
@@ -1957,6 +2060,7 @@ export default function Home() {
       </div>
       <BottomPanel
         narrative={narrative}
+        adversarialNarrative={adversarialNarrative}
         confidence={modelConfidence}
         latencyMs={latencyMs}
         activeSymbol={activeSymbol}
