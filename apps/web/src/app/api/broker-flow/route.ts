@@ -86,6 +86,26 @@ export async function GET(request: Request) {
       is_anomalous: stdDev === 0 ? false : Math.abs((b.net_buy_value - mean) / stdDev) > 2
     }));
 
+    const netBuyers = brokersWithZScore
+      .filter((broker: any) => Number(broker.net_buy_value || 0) > 0)
+      .sort((a: any, b: any) => Number(b.net_buy_value || 0) - Number(a.net_buy_value || 0));
+    const netSellers = brokersWithZScore.filter((broker: any) => Number(broker.net_buy_value || 0) < 0);
+
+    const totalPositiveNet = netBuyers.reduce((sum: number, broker: any) => sum + Number(broker.net_buy_value || 0), 0);
+    const topBuyerNet = Number(netBuyers[0]?.net_buy_value || 0);
+    const topBuyerSharePct = totalPositiveNet > 0 ? (topBuyerNet / totalPositiveNet) * 100 : 0;
+    const supportingBuyers = netBuyers.filter((broker: any) => Number(broker.net_buy_value || 0) >= topBuyerNet * 0.25).length;
+    const concentrationRatio = netBuyers.length > 0 ? supportingBuyers / netBuyers.length : 0;
+
+    const artificialLiquidityWarning =
+      topBuyerSharePct >= 70 &&
+      supportingBuyers <= 1 &&
+      netSellers.length >= Math.max(3, Math.ceil(brokersWithZScore.length * 0.5));
+
+    const artificialLiquidityReason = artificialLiquidityWarning
+      ? `Top buyer dominates ${topBuyerSharePct.toFixed(1)}% of net accumulation while ${netSellers.length} brokers are net sellers`
+      : null;
+
     // Apply filter
     let filtered = brokersWithZScore;
     if (filter === 'whale') {
@@ -119,6 +139,12 @@ export async function GET(request: Request) {
         avg_net_value: mean,
         std_deviation: stdDev,
         wash_sale_score: Math.min(washSaleScore, 100),
+        top_buyer_share_pct: Number(topBuyerSharePct.toFixed(2)),
+        concentration_ratio: Number(concentrationRatio.toFixed(3)),
+        supporting_buyers: supportingBuyers,
+        net_sellers: netSellers.length,
+        artificial_liquidity_warning: artificialLiquidityWarning,
+        artificial_liquidity_reason: artificialLiquidityReason,
       },
       last_updated: new Date().toISOString()
     });
