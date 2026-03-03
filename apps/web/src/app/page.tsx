@@ -48,6 +48,7 @@ interface BrokerFlowApiRow {
   z_score?: number;
   is_whale?: boolean;
   is_retail?: boolean;
+  character_profile?: string;
 }
 
 interface BrokerFlowStats {
@@ -57,6 +58,9 @@ interface BrokerFlowStats {
   net_sellers?: number;
   artificial_liquidity_warning?: boolean;
   artificial_liquidity_reason?: string | null;
+  bcp_risk_warning?: boolean;
+  bcp_risk_count?: number;
+  bcp_risk_reason?: string | null;
 }
 
 interface BrokerRow {
@@ -66,6 +70,7 @@ interface BrokerRow {
   score: number;
   action: 'Buy' | 'Sell';
   z: number;
+  profile?: string;
 }
 
 interface HeatmapApiRow {
@@ -251,6 +256,12 @@ interface ArtificialLiquidityState {
   netSellers: number;
 }
 
+interface BrokerCharacterState {
+  warning: boolean;
+  riskCount: number;
+  reason: string | null;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -387,9 +398,14 @@ function technicalVoteFromUps(ups: number, minUpsForLong: number): VoteSignal {
   return 'NEUTRAL';
 }
 
-function bandarmologyVoteFromFlow(brokers: BrokerRow[], artificialLiquidityWarning = false): VoteSignal {
+function bandarmologyVoteFromFlow(
+  brokers: BrokerRow[],
+  artificialLiquidityWarning = false,
+  brokerCharacterWarning = false,
+): VoteSignal {
   if (brokers.length === 0) return 'NEUTRAL';
   if (artificialLiquidityWarning) return 'NEUTRAL';
+  if (brokerCharacterWarning) return 'NEUTRAL';
 
   const whaleNet = brokers.filter((row) => row.type === 'Whale').reduce((sum, row) => sum + row.net, 0);
   const marketNet = brokers.reduce((sum, row) => sum + row.net, 0);
@@ -902,10 +918,12 @@ function RightSidebar({
   brokers,
   zData,
   artificialLiquidity,
+  brokerCharacter,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
   artificialLiquidity: ArtificialLiquidityState;
+  brokerCharacter: BrokerCharacterState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -926,7 +944,10 @@ function RightSidebar({
             <div key={index} className="grid grid-cols-4 gap-1 px-3 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors items-center">
               <div className="flex items-center space-x-2">
                 <span className={cn('w-2 h-2 rounded-full', broker.action === 'Buy' ? 'bg-emerald-500' : 'bg-rose-500')} />
-                <span className="font-bold text-slate-200 text-xs">{broker.broker}</span>
+                <div className="flex flex-col">
+                  <span className="font-bold text-slate-200 text-xs">{broker.broker}</span>
+                  {broker.profile ? <span className="text-[9px] text-slate-500 font-mono">{broker.profile}</span> : null}
+                </div>
               </div>
               <div className="text-center">
                 <span
@@ -971,6 +992,17 @@ function RightSidebar({
             {`TopShare ${artificialLiquidity.topBuyerSharePct.toFixed(1)}% | CR ${artificialLiquidity.concentrationRatio.toFixed(2)} | Support ${artificialLiquidity.supportingBuyers}`}
           </div>
           {artificialLiquidity.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{artificialLiquidity.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              brokerCharacter.warning
+                ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {brokerCharacter.warning ? `BCP Risk Warning (${brokerCharacter.riskCount})` : 'BCP Stable'}
+          </div>
+          {brokerCharacter.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{brokerCharacter.reason}</div> : null}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1477,6 +1509,11 @@ export default function Home() {
     supportingBuyers: 0,
     netSellers: 0,
   });
+  const [brokerCharacter, setBrokerCharacter] = useState<BrokerCharacterState>({
+    warning: false,
+    riskCount: 0,
+    reason: null,
+  });
 
   const [infraStatus, setInfraStatus] = useState<{ sse: Tone; db: Tone; integrity: Tone; token: Tone }>({
     sse: 'good',
@@ -1586,6 +1623,7 @@ export default function Home() {
         score: scoreFromNet(net),
         action: net >= 0 ? 'Buy' : 'Sell',
         z: Number(item.z_score || 0),
+        profile: item.character_profile || undefined,
       } as BrokerRow;
     });
 
@@ -1600,6 +1638,11 @@ export default function Home() {
       concentrationRatio: Number(brokerFlow?.stats?.concentration_ratio || 0),
       supportingBuyers: Number(brokerFlow?.stats?.supporting_buyers || 0),
       netSellers: Number(brokerFlow?.stats?.net_sellers || 0),
+    });
+    setBrokerCharacter({
+      warning: Boolean(brokerFlow?.stats?.bcp_risk_warning),
+      riskCount: Number(brokerFlow?.stats?.bcp_risk_count || 0),
+      reason: brokerFlow?.stats?.bcp_risk_reason || null,
     });
 
     const heatRows = heatmap?.heatmap || [];
@@ -1733,7 +1776,8 @@ export default function Home() {
 
     const technicalVote = technicalVoteFromUps(nextUps, minUpsForLong);
     const artificialLiquidityWarning = Boolean(brokerFlow?.stats?.artificial_liquidity_warning);
-    const bandarmologyVote = bandarmologyVoteFromFlow(brokerRows, artificialLiquidityWarning);
+    const brokerCharacterWarning = Boolean(brokerFlow?.stats?.bcp_risk_warning);
+    const bandarmologyVote = bandarmologyVoteFromFlow(brokerRows, artificialLiquidityWarning, brokerCharacterWarning);
     const preliminarySentimentVote = global?.global_sentiment === 'BULLISH' ? 'BUY' : global?.global_sentiment === 'BEARISH' ? 'SELL' : 'NEUTRAL';
     const preliminaryConsensus = buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote);
     setModelConsensus(preliminaryConsensus);
@@ -1753,6 +1797,7 @@ export default function Home() {
         `Risk Gate: ${riskGateLabel}\n` +
         `Deploy Gate: ${deployGate?.blocked ? 'BLOCKED' : 'PASS'}\n` +
         `Flow Integrity: ${artificialLiquidityWarning ? 'Artificial Liquidity Warning' : 'Healthy'}\n` +
+        `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
@@ -2146,6 +2191,11 @@ export default function Home() {
               supporting_buyers: artificialLiquidity.supportingBuyers,
               net_sellers: artificialLiquidity.netSellers,
             },
+            broker_character_profile: {
+              risk_warning: brokerCharacter.warning,
+              risk_count: brokerCharacter.riskCount,
+              reason: brokerCharacter.reason,
+            },
           },
         }),
       });
@@ -2189,6 +2239,9 @@ export default function Home() {
     artificialLiquidity.concentrationRatio,
     artificialLiquidity.supportingBuyers,
     artificialLiquidity.netSellers,
+    brokerCharacter.warning,
+    brokerCharacter.riskCount,
+    brokerCharacter.reason,
   ]);
 
   const runBacktest = useCallback(async () => {
@@ -2455,7 +2508,7 @@ export default function Home() {
           prediction={prediction}
           combatMode={combatMode}
         />
-        <RightSidebar brokers={brokers} zData={zData} artificialLiquidity={artificialLiquidity} />
+        <RightSidebar brokers={brokers} zData={zData} artificialLiquidity={artificialLiquidity} brokerCharacter={brokerCharacter} />
       </div>
       {!combatMode.active ? (
         <BottomPanel

@@ -3,6 +3,49 @@ import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+type BrokerCharacterProfile =
+  | 'CONSISTENT_ACCUMULATOR'
+  | 'CONSISTENT_DISTRIBUTOR'
+  | 'ONE_DAY_TRADER'
+  | 'ALGO_ACCUMULATION'
+  | 'MIXED_FLOW';
+
+function classifyBrokerCharacter(dailyData: number[], activeDays: number): BrokerCharacterProfile {
+  const normalized = (dailyData || []).map((value) => Number(value || 0));
+  if (normalized.length === 0) return 'MIXED_FLOW';
+
+  const positiveDays = normalized.filter((value) => value > 0).length;
+  const negativeDays = normalized.filter((value) => value < 0).length;
+  const totalAbs = normalized.reduce((sum, value) => sum + Math.abs(value), 0);
+  const lastAbs = Math.abs(normalized[normalized.length - 1] || 0);
+  const avgAbs = normalized.length > 0 ? totalAbs / normalized.length : 0;
+  const positiveValues = normalized.filter((value) => value > 0);
+  const positiveVariance =
+    positiveValues.length > 1
+      ? positiveValues.reduce((sum, value) => sum + Math.pow(value - positiveValues.reduce((a, b) => a + b, 0) / positiveValues.length, 2), 0) /
+        positiveValues.length
+      : 0;
+  const positiveStdDev = Math.sqrt(positiveVariance);
+
+  if (activeDays <= 2 && totalAbs > 0 && lastAbs / totalAbs >= 0.65) {
+    return 'ONE_DAY_TRADER';
+  }
+
+  if (positiveDays >= 3 && positiveStdDev <= Math.max(1, avgAbs * 0.25)) {
+    return 'ALGO_ACCUMULATION';
+  }
+
+  if (positiveDays >= Math.max(3, Math.ceil(normalized.length * 0.6))) {
+    return 'CONSISTENT_ACCUMULATOR';
+  }
+
+  if (negativeDays >= Math.max(3, Math.ceil(normalized.length * 0.6))) {
+    return 'CONSISTENT_DISTRIBUTOR';
+  }
+
+  return 'MIXED_FLOW';
+}
+
 /**
  * GET /api/broker-flow?symbol=BBCA&days=7&filter=all
  * Returns broker flow analysis for a symbol
@@ -65,8 +108,9 @@ export async function GET(request: Request) {
       consistency_score: (row.active_days / days) * 100,
       avg_buy_price: row.avg_buy_price,
       daily_heatmap: row.daily_data,
+      character_profile: classifyBrokerCharacter(row.daily_data || [], Number(row.active_days || 0)),
       is_whale: Math.abs(row.total_net_buy) > 5000000000, // > 5T IDR
-      is_retail: Math.abs(row.total_net_buy) < 500000000    // < 500M IDR
+      is_retail: Math.abs(row.total_net_buy) < 500000000, // < 500M IDR
     }));
 
     let mean = 0;
@@ -85,6 +129,16 @@ export async function GET(request: Request) {
       z_score: stdDev === 0 ? 0 : (b.net_buy_value - mean) / stdDev,
       is_anomalous: stdDev === 0 ? false : Math.abs((b.net_buy_value - mean) / stdDev) > 2
     }));
+
+    const bcpRiskCount = brokersWithZScore.filter((broker: any) => ['ONE_DAY_TRADER', 'CONSISTENT_DISTRIBUTOR'].includes(String(broker.character_profile))).length;
+    const bcpRiskWarning = bcpRiskCount >= Math.max(2, Math.ceil(brokersWithZScore.length * 0.25));
+    const dominantRiskProfile = bcpRiskWarning
+      ? brokersWithZScore
+          .filter((broker: any) => ['ONE_DAY_TRADER', 'CONSISTENT_DISTRIBUTOR'].includes(String(broker.character_profile)))
+          .slice(0, 3)
+          .map((broker: any) => `${broker.broker_id}:${broker.character_profile}`)
+          .join(', ')
+      : null;
 
     const netBuyers = brokersWithZScore
       .filter((broker: any) => Number(broker.net_buy_value || 0) > 0)
@@ -145,6 +199,9 @@ export async function GET(request: Request) {
         net_sellers: netSellers.length,
         artificial_liquidity_warning: artificialLiquidityWarning,
         artificial_liquidity_reason: artificialLiquidityReason,
+        bcp_risk_warning: bcpRiskWarning,
+        bcp_risk_count: bcpRiskCount,
+        bcp_risk_reason: dominantRiskProfile,
       },
       last_updated: new Date().toISOString()
     });
