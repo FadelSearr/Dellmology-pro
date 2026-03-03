@@ -3,6 +3,37 @@ import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+const ENGINE_OFFLINE_ALERT_COOLDOWN_SECONDS = 600;
+
+async function sendEngineStatusAlert(payload: {
+  event: 'ENGINE_OFFLINE' | 'ENGINE_RECOVERED';
+  workerLastSeenSeconds: number | null;
+  heartbeatTimeoutSeconds: number;
+}) {
+  const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8001';
+  const response = await fetch(`${ML_ENGINE_URL}/telegram/alert`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.ML_ENGINE_KEY || ''}`,
+    },
+    body: JSON.stringify({
+      type: 'market',
+      symbol: 'SYSTEM',
+      data: {
+        event: payload.event,
+        worker_last_seen_seconds: payload.workerLastSeenSeconds,
+        heartbeat_timeout_seconds: payload.heartbeatTimeoutSeconds,
+        timestamp: new Date().toISOString(),
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`ML Engine alert failed with status ${response.status}`);
+  }
+}
+
 /**
  * GET /api/health
  * System health check endpoint
@@ -77,6 +108,76 @@ export async function GET(request: Request) {
       }
     } catch (err) {
       console.error('Worker heartbeat check failed:', err);
+    }
+
+    let deadmanAlertTriggered = false;
+    let deadmanLastAlertSeconds: number | null = null;
+    try {
+      const deadmanConfig = await db.query(
+        `
+          SELECT key, value
+          FROM config
+          WHERE key IN ('engine_last_online_state', 'engine_offline_alert_last_sent_at')
+        `,
+      );
+
+      const lastOnlineStateRaw = deadmanConfig.rows.find((row) => row.key === 'engine_last_online_state')?.value;
+      const lastAlertAtRaw = deadmanConfig.rows.find((row) => row.key === 'engine_offline_alert_last_sent_at')?.value;
+
+      const lastOnlineState = typeof lastOnlineStateRaw === 'string' ? lastOnlineStateRaw : 'unknown';
+      const lastAlertAt = typeof lastAlertAtRaw === 'string' ? new Date(lastAlertAtRaw) : null;
+      const lastAlertAtValid = lastAlertAt && !Number.isNaN(lastAlertAt.getTime());
+
+      if (lastAlertAtValid) {
+        deadmanLastAlertSeconds = Math.max(0, Math.floor((Date.now() - lastAlertAt.getTime()) / 1000));
+      }
+
+      const alertEnabled = process.env.ENABLE_ENGINE_OFFLINE_ALERTS !== 'false';
+      const transitionedToOffline = !workerOnline && lastOnlineState !== 'offline';
+      const cooldownElapsed = deadmanLastAlertSeconds === null || deadmanLastAlertSeconds >= ENGINE_OFFLINE_ALERT_COOLDOWN_SECONDS;
+
+      if (alertEnabled && !workerOnline && (transitionedToOffline || cooldownElapsed)) {
+        await sendEngineStatusAlert({
+          event: 'ENGINE_OFFLINE',
+          workerLastSeenSeconds,
+          heartbeatTimeoutSeconds,
+        });
+
+        deadmanAlertTriggered = true;
+        await db.query(
+          `
+            INSERT INTO config (key, value, updated_at)
+            VALUES
+              ('engine_last_online_state', 'offline', NOW()),
+              ('engine_offline_alert_last_sent_at', $1, NOW())
+            ON CONFLICT (key) DO UPDATE
+            SET value = EXCLUDED.value,
+                updated_at = NOW();
+          `,
+          [new Date().toISOString()],
+        );
+      } else {
+        await db.query(
+          `
+            INSERT INTO config (key, value, updated_at)
+            VALUES ('engine_last_online_state', $1, NOW())
+            ON CONFLICT (key) DO UPDATE
+            SET value = EXCLUDED.value,
+                updated_at = NOW();
+          `,
+          [workerOnline ? 'online' : 'offline'],
+        );
+      }
+
+      if (alertEnabled && workerOnline && lastOnlineState === 'offline') {
+        await sendEngineStatusAlert({
+          event: 'ENGINE_RECOVERED',
+          workerLastSeenSeconds,
+          heartbeatTimeoutSeconds,
+        });
+      }
+    } catch (err) {
+      console.error('Dead-man switch alert check failed:', err);
     }
 
     // Check session token freshness (extension heartbeat visibility)
@@ -188,6 +289,9 @@ export async function GET(request: Request) {
       worker_online: workerOnline,
       worker_last_seen_seconds: workerLastSeenSeconds,
       heartbeat_timeout_seconds: heartbeatTimeoutSeconds,
+      deadman_alert_triggered: deadmanAlertTriggered,
+      deadman_last_alert_seconds: deadmanLastAlertSeconds,
+      deadman_alert_cooldown_seconds: ENGINE_OFFLINE_ALERT_COOLDOWN_SECONDS,
       token_available: tokenAvailable,
       token_status: tokenStatus,
       token_expires_in_seconds: tokenExpiresInSeconds,

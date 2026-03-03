@@ -130,6 +130,24 @@ interface ActionState {
   message: string | null;
 }
 
+interface TokenTelemetry {
+  status: 'fresh' | 'expiring' | 'expired' | 'missing';
+  syncReason: string | null;
+  jitterMs: number | null;
+  forcedRefreshCount: number | null;
+  extensionLastSeenSeconds: number | null;
+  deadmanTriggered: boolean;
+  deadmanLastAlertSeconds: number | null;
+  deadmanCooldownSeconds: number | null;
+}
+
+interface LiquidityGuard {
+  dailyVolumeLots: number;
+  capPct: number;
+  maxLots: number;
+  warning: string | null;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -200,9 +218,10 @@ function minutesByTimeframe(tf: Timeframe) {
   return 1440;
 }
 
-function signalLabel(ups: number) {
-  if (ups >= 80) return 'Strong Buy';
-  if (ups >= 60) return 'Buy';
+function signalLabel(ups: number, minBuyScore = 60) {
+  const strongBuyThreshold = Math.min(95, minBuyScore + 10);
+  if (ups >= strongBuyThreshold) return 'Strong Buy';
+  if (ups >= minBuyScore) return 'Buy';
   if (ups <= 30) return 'Strong Sell';
   if (ups <= 45) return 'Sell';
   return 'Neutral';
@@ -706,7 +725,11 @@ function BottomPanel({
   upsScore,
   onSendTelegram,
   onRunBacktest,
+  onResetDeadman,
+  deadmanResetCooldown,
   actionState,
+  tokenTelemetry,
+  liquidityGuard,
 }: {
   narrative: string;
   confidence: ModelConfidenceResponse | null;
@@ -715,7 +738,11 @@ function BottomPanel({
   upsScore: number;
   onSendTelegram: () => void;
   onRunBacktest: () => void;
+  onResetDeadman: () => void;
+  deadmanResetCooldown: number;
   actionState: ActionState;
+  tokenTelemetry: TokenTelemetry;
+  liquidityGuard: LiquidityGuard;
 }) {
   const label = confidence?.confidence_label || 'MEDIUM';
   const accuracy = Number(confidence?.accuracy_pct || 0);
@@ -763,6 +790,12 @@ function BottomPanel({
               <div className="h-full bg-cyan-500" style={{ width: `${Math.max(10, Math.min(100, accuracy))}%` }} />
             </div>
             <div className="text-[9px] text-slate-500 mt-1 text-right">Vol adjusted for liquidity safety</div>
+            <div className="mt-2 border border-slate-800 rounded px-2 py-1 bg-slate-950/60 text-[9px] font-mono text-slate-400">
+              <div>{`Daily Vol: ${liquidityGuard.dailyVolumeLots.toLocaleString()} lots`}</div>
+              <div>{`Participation Cap: ${(liquidityGuard.capPct * 100).toFixed(1)}%`}</div>
+              <div className="text-cyan-400">{`Max Recommended: ${liquidityGuard.maxLots.toLocaleString()} lots`}</div>
+              {liquidityGuard.warning ? <div className="text-amber-400 mt-1">{liquidityGuard.warning}</div> : null}
+            </div>
           </div>
         </div>
       </div>
@@ -786,12 +819,32 @@ function BottomPanel({
             <Clock className="w-3.5 h-3.5" />
             <span>Backtest Rig</span>
           </button>
+          <button
+            onClick={onResetDeadman}
+            disabled={actionState.busy || deadmanResetCooldown > 0}
+            className="flex items-center justify-center space-x-2 bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-50 text-amber-300 text-xs font-bold py-2 rounded transition-colors border border-amber-500/30"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>{deadmanResetCooldown > 0 ? `Reset Deadman (${deadmanResetCooldown}s)` : 'Reset Deadman'}</span>
+          </button>
           <div className="text-[9px] text-cyan-400 border border-slate-800 rounded px-2 py-1 bg-slate-900/40">
             {actionState.message || `Ready: ${activeSymbol} | UPS ${Math.round(upsScore)}`}
           </div>
           <div className="mt-2 pt-2 border-t border-slate-800 text-center">
             <span className="text-[9px] text-slate-600 block mb-1">SYSTEM LATENCY</span>
             <span className="text-[10px] text-emerald-500 font-mono">{latencyMs}ms</span>
+          </div>
+          <div className="mt-2 border border-slate-800 rounded px-2 py-1 bg-slate-900/30">
+            <div className="text-[9px] text-slate-500 uppercase tracking-wider mb-1">Token Telemetry</div>
+            <div className="text-[9px] text-slate-400 font-mono">
+              {`${tokenTelemetry.status.toUpperCase()} | ${tokenTelemetry.syncReason || 'unknown'} | ${tokenTelemetry.jitterMs ?? 0}ms`}
+            </div>
+            <div className="text-[9px] text-slate-500 font-mono mt-1">
+              {`refresh# ${tokenTelemetry.forcedRefreshCount ?? 0} | seen ${tokenTelemetry.extensionLastSeenSeconds ?? '-'}s`}
+            </div>
+            <div className={cn('text-[9px] font-mono mt-1', tokenTelemetry.deadmanTriggered ? 'text-amber-400' : 'text-slate-500')}>
+              {`deadman ${tokenTelemetry.deadmanTriggered ? 'TRIGGERED' : 'idle'} | last ${tokenTelemetry.deadmanLastAlertSeconds ?? '-'}s / cd ${tokenTelemetry.deadmanCooldownSeconds ?? '-'}s`}
+            </div>
           </div>
         </div>
       </div>
@@ -818,6 +871,18 @@ export default function Home() {
   const [latencyMs, setLatencyMs] = useState(12);
   const [globalData, setGlobalData] = useState<GlobalCorrelationResponse | null>(null);
   const [actionState, setActionState] = useState<ActionState>({ busy: false, message: null });
+  const [marketTotalVolume, setMarketTotalVolume] = useState<number | null>(null);
+  const [tokenTelemetry, setTokenTelemetry] = useState<TokenTelemetry>({
+    status: 'missing',
+    syncReason: null,
+    jitterMs: null,
+    forcedRefreshCount: null,
+    extensionLastSeenSeconds: null,
+    deadmanTriggered: false,
+    deadmanLastAlertSeconds: null,
+    deadmanCooldownSeconds: null,
+  });
+  const [deadmanResetCooldown, setDeadmanResetCooldown] = useState(0);
 
   const [infraStatus, setInfraStatus] = useState<{ sse: Tone; db: Tone; integrity: Tone; token: Tone }>({
     sse: 'good',
@@ -860,6 +925,13 @@ export default function Home() {
       db_connected?: boolean;
       data_integrity?: boolean;
       token_status?: 'fresh' | 'expiring' | 'expired' | 'missing';
+      token_last_sync_reason?: string | null;
+      token_last_jitter_ms?: number | null;
+      token_forced_refresh_count?: number | null;
+      token_extension_last_seen_seconds?: number | null;
+      deadman_alert_triggered?: boolean;
+      deadman_last_alert_seconds?: number | null;
+      deadman_alert_cooldown_seconds?: number | null;
     } | null;
     const global = requests[7] as GlobalCorrelationResponse | null;
 
@@ -905,10 +977,16 @@ export default function Home() {
     }
 
     const nextUps = Number(marketIntel?.unified_power_score?.score || 88);
+    const nextTotalVolume = Number(marketIntel?.metrics?.total_volume || 0);
     setUpsScore(nextUps);
+    setMarketTotalVolume(nextTotalVolume > 0 ? nextTotalVolume : null);
     setModelConfidence(confidence);
     setPrediction(pred);
     setGlobalData(global);
+
+    const ihsgChangePct = Number(global?.change_ihsg || 0);
+    const killSwitchActive = ihsgChangePct <= -1.5;
+    const minUpsForLong = killSwitchActive ? 90 : 70;
 
     if (health) {
       const tokenTone: Tone =
@@ -919,6 +997,20 @@ export default function Home() {
         db: health.db_connected ? 'good' : 'error',
         integrity: health.data_integrity ? 'good' : 'warning',
         token: tokenTone,
+      });
+
+      setTokenTelemetry({
+        status: health.token_status || 'missing',
+        syncReason: health.token_last_sync_reason || null,
+        jitterMs: typeof health.token_last_jitter_ms === 'number' ? health.token_last_jitter_ms : null,
+        forcedRefreshCount: typeof health.token_forced_refresh_count === 'number' ? health.token_forced_refresh_count : null,
+        extensionLastSeenSeconds:
+          typeof health.token_extension_last_seen_seconds === 'number' ? health.token_extension_last_seen_seconds : null,
+        deadmanTriggered: Boolean(health.deadman_alert_triggered),
+        deadmanLastAlertSeconds:
+          typeof health.deadman_last_alert_seconds === 'number' ? health.deadman_last_alert_seconds : null,
+        deadmanCooldownSeconds:
+          typeof health.deadman_alert_cooldown_seconds === 'number' ? health.deadman_alert_cooldown_seconds : null,
       });
     }
 
@@ -936,14 +1028,18 @@ export default function Home() {
 
     const volClass = marketIntel?.volatility?.classification || 'MEDIUM';
     const confLabel = confidence?.confidence_label || 'MEDIUM';
+    const riskGateLabel = killSwitchActive
+      ? `KILL-SWITCH ACTIVE (IHSG ${ihsgChangePct.toFixed(2)}%, min UPS ${minUpsForLong})`
+      : `NORMAL (${minUpsForLong} UPS gate)`;
 
     setNarrative(
       `System: Analyzing ${activeSymbol} market structure...\n\n` +
-        `AI: ${signalLabel(nextUps).toUpperCase()} BIAS DETECTED.\n` +
+        `AI: ${signalLabel(nextUps, minUpsForLong).toUpperCase()} BIAS DETECTED.\n` +
         `Price Move (${timeframe}): ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | Volatility: ${volClass}\n` +
+        `Risk Gate: ${riskGateLabel}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${nextUps >= 60 ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
   }, [activeSymbol, timeframe, marketData]);
 
@@ -959,11 +1055,55 @@ export default function Home() {
     };
   }, [fetchDashboard]);
 
+  useEffect(() => {
+    if (deadmanResetCooldown <= 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setDeadmanResetCooldown((value) => (value > 1 ? value - 1 : 0));
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [deadmanResetCooldown]);
+
   const currentPrice = marketData[marketData.length - 1]?.price || FALLBACK_MARKET_DATA[FALLBACK_MARKET_DATA.length - 1].price;
   const basePrice = marketData[0]?.price || FALLBACK_MARKET_DATA[0].price;
   const priceChange = basePrice > 0 ? ((currentPrice - basePrice) / basePrice) * 100 : 0;
+  const ihsgChangePct = Number(globalData?.change_ihsg || 0);
+  const killSwitchActive = ihsgChangePct <= -1.5;
+  const minUpsForLong = killSwitchActive ? 90 : 70;
+
+  const estimatedDailyVolumeShares =
+    typeof marketTotalVolume === 'number' && marketTotalVolume > 0
+      ? marketTotalVolume
+      : marketData.reduce((sum, point) => sum + Number(point.volume || 0), 0);
+  const estimatedDailyVolumeLots = Math.max(1, Math.floor(estimatedDailyVolumeShares / 100));
+  const participationCapPct = killSwitchActive ? 0.005 : 0.01;
+  const maxRecommendedLots = Math.max(1, Math.floor(estimatedDailyVolumeLots * participationCapPct));
+  const liquidityGuard: LiquidityGuard = {
+    dailyVolumeLots: estimatedDailyVolumeLots,
+    capPct: participationCapPct,
+    maxLots: maxRecommendedLots,
+    warning:
+      maxRecommendedLots < 20
+        ? 'Liquidity warning: cap < 20 lots, high slippage risk'
+        : maxRecommendedLots < 100
+          ? 'Moderate liquidity: keep entries staggered'
+          : null,
+  };
 
   const sendTelegramAlert = useCallback(async () => {
+    if (killSwitchActive && upsScore < minUpsForLong) {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: kill-switch active (IHSG ${ihsgChangePct.toFixed(2)}%, UPS ${Math.round(upsScore)}/${minUpsForLong})`,
+      });
+      return;
+    }
+
     setActionState({ busy: true, message: 'Sending Telegram alert...' });
     try {
       const response = await fetch('/api/telegram-alert', {
@@ -974,9 +1114,20 @@ export default function Home() {
           symbol: activeSymbol,
           data: {
             ups_score: Math.round(upsScore),
-            signal: signalLabel(upsScore).toUpperCase(),
+            signal: signalLabel(upsScore, minUpsForLong).toUpperCase(),
             price: currentPrice,
             timeframe,
+            risk_gate: {
+              mode: killSwitchActive ? 'KILL_SWITCH' : 'NORMAL',
+              ihsg_change_pct: ihsgChangePct,
+              min_ups_for_long: minUpsForLong,
+            },
+            liquidity_guard: {
+              daily_volume_lots: liquidityGuard.dailyVolumeLots,
+              participation_cap_pct: liquidityGuard.capPct,
+              max_recommended_lots: liquidityGuard.maxLots,
+              warning: liquidityGuard.warning,
+            },
           },
         }),
       });
@@ -989,7 +1140,19 @@ export default function Home() {
       const message = error instanceof Error ? error.message : 'Failed to send alert';
       setActionState({ busy: false, message: `Telegram failed: ${message}` });
     }
-  }, [activeSymbol, currentPrice, timeframe, upsScore]);
+  }, [
+    activeSymbol,
+    currentPrice,
+    ihsgChangePct,
+    killSwitchActive,
+    liquidityGuard.capPct,
+    liquidityGuard.dailyVolumeLots,
+    liquidityGuard.maxLots,
+    liquidityGuard.warning,
+    minUpsForLong,
+    timeframe,
+    upsScore,
+  ]);
 
   const runBacktest = useCallback(async () => {
     setActionState({ busy: true, message: 'Running backtest...' });
@@ -1006,6 +1169,17 @@ export default function Home() {
           start_date: startDate,
           end_date: endDate,
           strategy: 'default',
+          risk_gate: {
+            mode: killSwitchActive ? 'KILL_SWITCH' : 'NORMAL',
+            ihsg_change_pct: ihsgChangePct,
+            min_ups_for_long: minUpsForLong,
+          },
+          liquidity_guard: {
+            daily_volume_lots: liquidityGuard.dailyVolumeLots,
+            participation_cap_pct: liquidityGuard.capPct,
+            max_recommended_lots: liquidityGuard.maxLots,
+            warning: liquidityGuard.warning,
+          },
         }),
       });
       const body = (await response.json()) as { success?: boolean; error?: string; result?: { win_rate?: number; total_trades?: number } };
@@ -1020,7 +1194,35 @@ export default function Home() {
       const message = error instanceof Error ? error.message : 'Backtest failed';
       setActionState({ busy: false, message: `Backtest failed: ${message}` });
     }
-  }, [activeSymbol]);
+  }, [activeSymbol, ihsgChangePct, killSwitchActive, liquidityGuard.capPct, liquidityGuard.dailyVolumeLots, liquidityGuard.maxLots, liquidityGuard.warning, minUpsForLong]);
+
+  const resetDeadman = useCallback(async () => {
+    if (deadmanResetCooldown > 0) {
+      setActionState({ busy: false, message: `Deadman cooldown: wait ${deadmanResetCooldown}s` });
+      return;
+    }
+
+    setActionState({ busy: true, message: 'Resetting deadman state...' });
+    try {
+      const response = await fetch('/api/system-control/deadman', {
+        method: 'POST',
+      });
+      const body = (await response.json()) as { success?: boolean; error?: string; retry_after_seconds?: number };
+      if (!response.ok || !body.success) {
+        if (response.status === 429 && typeof body.retry_after_seconds === 'number') {
+          setDeadmanResetCooldown(Math.max(1, Math.floor(body.retry_after_seconds)));
+        }
+        throw new Error(body.error || 'Deadman reset failed');
+      }
+
+      setDeadmanResetCooldown(typeof body.retry_after_seconds === 'number' ? Math.max(1, Math.floor(body.retry_after_seconds)) : 30);
+      setActionState({ busy: false, message: 'Deadman reset completed' });
+      void fetchDashboard();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Deadman reset failed';
+      setActionState({ busy: false, message: `Deadman reset failed: ${message}` });
+    }
+  }, [deadmanResetCooldown, fetchDashboard]);
 
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
@@ -1054,7 +1256,11 @@ export default function Home() {
         upsScore={upsScore}
         onSendTelegram={sendTelegramAlert}
         onRunBacktest={runBacktest}
+        onResetDeadman={resetDeadman}
+        deadmanResetCooldown={deadmanResetCooldown}
         actionState={actionState}
+        tokenTelemetry={tokenTelemetry}
+        liquidityGuard={liquidityGuard}
       />
     </div>
   );
