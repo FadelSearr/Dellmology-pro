@@ -262,6 +262,13 @@ interface BrokerCharacterState {
   reason: string | null;
 }
 
+interface VolumeProfileDivergenceState {
+  warning: boolean;
+  reason: string | null;
+  highBandVolumeSharePct: number;
+  upperRangePositionPct: number;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -402,10 +409,12 @@ function bandarmologyVoteFromFlow(
   brokers: BrokerRow[],
   artificialLiquidityWarning = false,
   brokerCharacterWarning = false,
+  lateEntryWarning = false,
 ): VoteSignal {
   if (brokers.length === 0) return 'NEUTRAL';
   if (artificialLiquidityWarning) return 'NEUTRAL';
   if (brokerCharacterWarning) return 'NEUTRAL';
+  if (lateEntryWarning) return 'NEUTRAL';
 
   const whaleNet = brokers.filter((row) => row.type === 'Whale').reduce((sum, row) => sum + row.net, 0);
   const marketNet = brokers.reduce((sum, row) => sum + row.net, 0);
@@ -919,11 +928,13 @@ function RightSidebar({
   zData,
   artificialLiquidity,
   brokerCharacter,
+  divergence,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
   artificialLiquidity: ArtificialLiquidityState;
   brokerCharacter: BrokerCharacterState;
+  divergence: VolumeProfileDivergenceState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -1003,6 +1014,18 @@ function RightSidebar({
             {brokerCharacter.warning ? `BCP Risk Warning (${brokerCharacter.riskCount})` : 'BCP Stable'}
           </div>
           {brokerCharacter.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{brokerCharacter.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              divergence.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {divergence.warning ? 'Late Entry Warning' : 'Volume Profile Normal'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`UpperVol ${divergence.highBandVolumeSharePct.toFixed(1)}% | Pos ${divergence.upperRangePositionPct.toFixed(1)}%`}
+          </div>
+          {divergence.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{divergence.reason}</div> : null}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1514,6 +1537,12 @@ export default function Home() {
     riskCount: 0,
     reason: null,
   });
+  const [volumeProfileDivergence, setVolumeProfileDivergence] = useState<VolumeProfileDivergenceState>({
+    warning: false,
+    reason: null,
+    highBandVolumeSharePct: 0,
+    upperRangePositionPct: 0,
+  });
 
   const [infraStatus, setInfraStatus] = useState<{ sse: Tone; db: Tone; integrity: Tone; token: Tone }>({
     sse: 'good',
@@ -1750,6 +1779,20 @@ export default function Home() {
     const lastPrice = Number(mainPriceSeries[mainPriceSeries.length - 1]?.price || marketData[marketData.length - 1]?.price || FALLBACK_MARKET_DATA[FALLBACK_MARKET_DATA.length - 1].price);
     const deltaPct = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
 
+    const profileData = (mainPriceSeries.length >= 2
+      ? mainPriceSeries.map((row) => ({ price: Number(row.price || 0), volume: Number(row.payload?.volume || 0) }))
+      : marketData.map((row) => ({ price: Number(row.price || 0), volume: Number(row.volume || 0) }))
+    ).filter((row) => row.price > 0 && row.volume >= 0);
+
+    const priceMin = profileData.length > 0 ? Math.min(...profileData.map((row) => row.price)) : 0;
+    const priceMax = profileData.length > 0 ? Math.max(...profileData.map((row) => row.price)) : 0;
+    const priceRange = Math.max(0.0001, priceMax - priceMin);
+    const upperBandThreshold = priceMin + priceRange * 0.75;
+    const totalProfileVolume = profileData.reduce((sum, row) => sum + row.volume, 0);
+    const upperBandVolume = profileData.filter((row) => row.price >= upperBandThreshold).reduce((sum, row) => sum + row.volume, 0);
+    const upperBandSharePct = totalProfileVolume > 0 ? (upperBandVolume / totalProfileVolume) * 100 : 0;
+    const upperRangePositionPct = ((lastPrice - priceMin) / priceRange) * 100;
+
     const topWhales = (brokerRows.filter((row) => row.type === 'Whale' && row.net > 0).slice(0, 2) || [])
       .map((row) => `${row.broker} ${formatCompactIDR(row.net)}`)
       .join(', ');
@@ -1777,7 +1820,21 @@ export default function Home() {
     const technicalVote = technicalVoteFromUps(nextUps, minUpsForLong);
     const artificialLiquidityWarning = Boolean(brokerFlow?.stats?.artificial_liquidity_warning);
     const brokerCharacterWarning = Boolean(brokerFlow?.stats?.bcp_risk_warning);
-    const bandarmologyVote = bandarmologyVoteFromFlow(brokerRows, artificialLiquidityWarning, brokerCharacterWarning);
+    const whaleNetPositive = brokerRows.filter((row) => row.type === 'Whale').reduce((sum, row) => sum + row.net, 0) > 0;
+    const lateEntryWarning =
+      upperBandSharePct >= 60 &&
+      upperRangePositionPct >= 80 &&
+      whaleNetPositive &&
+      !artificialLiquidityWarning;
+    setVolumeProfileDivergence({
+      warning: lateEntryWarning,
+      reason: lateEntryWarning
+        ? `Volume terkonsentrasi di area atas (${upperBandSharePct.toFixed(1)}%) saat harga sudah di ${(Math.min(100, upperRangePositionPct)).toFixed(1)}% range.`
+        : null,
+      highBandVolumeSharePct: upperBandSharePct,
+      upperRangePositionPct: Math.max(0, Math.min(100, upperRangePositionPct)),
+    });
+    const bandarmologyVote = bandarmologyVoteFromFlow(brokerRows, artificialLiquidityWarning, brokerCharacterWarning, lateEntryWarning);
     const preliminarySentimentVote = global?.global_sentiment === 'BULLISH' ? 'BUY' : global?.global_sentiment === 'BEARISH' ? 'SELL' : 'NEUTRAL';
     const preliminaryConsensus = buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote);
     setModelConsensus(preliminaryConsensus);
@@ -1798,6 +1855,7 @@ export default function Home() {
         `Deploy Gate: ${deployGate?.blocked ? 'BLOCKED' : 'PASS'}\n` +
         `Flow Integrity: ${artificialLiquidityWarning ? 'Artificial Liquidity Warning' : 'Healthy'}\n` +
         `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
+        `Volume Profile: ${lateEntryWarning ? 'Late Entry Warning' : 'Normal'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
@@ -2139,6 +2197,14 @@ export default function Home() {
       return;
     }
 
+    if (volumeProfileDivergence.warning && modelConsensus.status === 'CONSENSUS_BULL') {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: late-entry warning (${volumeProfileDivergence.highBandVolumeSharePct.toFixed(1)}% upper-band volume)`,
+      });
+      return;
+    }
+
     if (deploymentGate.blocked) {
       setActionState({
         busy: false,
@@ -2196,6 +2262,12 @@ export default function Home() {
               risk_count: brokerCharacter.riskCount,
               reason: brokerCharacter.reason,
             },
+            volume_profile_divergence: {
+              late_entry_warning: volumeProfileDivergence.warning,
+              reason: volumeProfileDivergence.reason,
+              upper_band_volume_share_pct: volumeProfileDivergence.highBandVolumeSharePct,
+              upper_range_position_pct: volumeProfileDivergence.upperRangePositionPct,
+            },
           },
         }),
       });
@@ -2242,6 +2314,10 @@ export default function Home() {
     brokerCharacter.warning,
     brokerCharacter.riskCount,
     brokerCharacter.reason,
+    volumeProfileDivergence.warning,
+    volumeProfileDivergence.reason,
+    volumeProfileDivergence.highBandVolumeSharePct,
+    volumeProfileDivergence.upperRangePositionPct,
   ]);
 
   const runBacktest = useCallback(async () => {
@@ -2508,7 +2584,13 @@ export default function Home() {
           prediction={prediction}
           combatMode={combatMode}
         />
-        <RightSidebar brokers={brokers} zData={zData} artificialLiquidity={artificialLiquidity} brokerCharacter={brokerCharacter} />
+        <RightSidebar
+          brokers={brokers}
+          zData={zData}
+          artificialLiquidity={artificialLiquidity}
+          brokerCharacter={brokerCharacter}
+          divergence={volumeProfileDivergence}
+        />
       </div>
       {!combatMode.active ? (
         <BottomPanel
