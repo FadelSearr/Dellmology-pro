@@ -67,6 +67,7 @@ export default function Home() {
   const [screenerMode, setScreenerMode] = useState<'DAYTRADE' | 'SWING' | 'CUSTOM'>('DAYTRADE');
   const [customRange, setCustomRange] = useState({ min: 100, max: 500 });
   const [positionInputs, setPositionInputs] = useState({ entry: 100, stopLoss: 2.5, atr: 4.5 });
+  const [liquidityInputs, setLiquidityInputs] = useState({ avgDailyVolumeLots: 2_000_000, participationCapPct: 0.8 });
   const [narrativeSignal, setNarrativeSignal] = useState<{
     vote: ConsensusVote;
     score: number;
@@ -89,10 +90,19 @@ export default function Home() {
     Math.min(95, 62 + Math.round((brokerData.slice(0, 3).reduce((sum, b) => sum + (b.consistency_score || 0), 0) / 3 || 0) * 20)),
   );
   const riskCapital = 5_000_000;
-  const recommendedLot = Math.max(
+  const riskBasedLot = Math.max(
     0,
     Math.floor(riskCapital / Math.max(1, positionInputs.entry * (positionInputs.stopLoss / 100) * 100)),
   );
+  const participationCapLot = Math.max(
+    0,
+    Math.floor(liquidityInputs.avgDailyVolumeLots * (liquidityInputs.participationCapPct / 100)),
+  );
+  const recommendedLot = Math.max(0, Math.min(riskBasedLot, participationCapLot));
+  const requestedImpactPct = liquidityInputs.avgDailyVolumeLots > 0 ? (riskBasedLot / liquidityInputs.avgDailyVolumeLots) * 100 : 0;
+  const finalImpactPct = liquidityInputs.avgDailyVolumeLots > 0 ? (recommendedLot / liquidityInputs.avgDailyVolumeLots) * 100 : 0;
+  const isHighImpactOrder = requestedImpactPct > 5;
+  const isCapApplied = riskBasedLot > participationCapLot;
   const watchlist = [symbol, 'BBCA', 'ASII'];
   const topWhales = brokerData.filter((b) => b.is_whale).slice(0, 2);
   const flowRows = brokerData.slice(0, 2);
@@ -592,7 +602,7 @@ export default function Home() {
 
               <div className="xl:col-span-4 xl:min-h-56">
                 <Card title="Smart Position Sizing" subtitle="Inputs calculator" headerDensity="compact" className="p-3! h-full">
-                  <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 text-sm mb-3">
                     <label className="text-[10px] text-gray-400">
                       Drawdown %
                       <input
@@ -629,6 +639,37 @@ export default function Home() {
                         className="mt-1 w-full px-2 py-1 bg-gray-800 border border-gray-700 rounded"
                       />
                     </label>
+                    <label className="text-[10px] text-gray-400">
+                      Avg Daily Volume (lot)
+                      <input
+                        type="number"
+                        value={liquidityInputs.avgDailyVolumeLots}
+                        onChange={(e) =>
+                          setLiquidityInputs((prev) => ({
+                            ...prev,
+                            avgDailyVolumeLots: Math.max(0, Number(e.target.value) || 0),
+                          }))
+                        }
+                        className="mt-1 w-full px-2 py-1 bg-gray-800 border border-gray-700 rounded"
+                      />
+                    </label>
+                    <label className="text-[10px] text-gray-400">
+                      Participation Cap %
+                      <input
+                        type="number"
+                        min={0.5}
+                        max={1}
+                        step={0.1}
+                        value={liquidityInputs.participationCapPct}
+                        onChange={(e) =>
+                          setLiquidityInputs((prev) => ({
+                            ...prev,
+                            participationCapPct: Math.max(0.5, Math.min(1, Number(e.target.value) || 0.5)),
+                          }))
+                        }
+                        className="mt-1 w-full px-2 py-1 bg-gray-800 border border-gray-700 rounded"
+                      />
+                    </label>
                   </div>
 
                   {cooling.active && cooling.until && (
@@ -637,14 +678,42 @@ export default function Home() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+                  {isCapApplied && (
+                    <div className="mb-2 rounded border border-yellow-700 bg-yellow-900/20 px-2 py-1.5 text-[11px] text-yellow-300">
+                      Participation cap active: recommendation clipped to {liquidityInputs.participationCapPct.toFixed(1)}% of daily volume.
+                    </div>
+                  )}
+
+                  {isHighImpactOrder && (
+                    <div className="mb-2 rounded border border-red-700 bg-red-900/20 px-2 py-1.5 text-[11px] text-red-300 font-semibold">
+                      High Impact Order - Liquidity Risk!
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-2 text-sm">
                     <div className="p-2 rounded border border-gray-700 bg-gray-900/40">
                       <div className="text-gray-400 text-xs">ATR Volatility</div>
                       <div className="font-semibold text-yellow-300">{positionInputs.atr.toFixed(2)}</div>
                     </div>
                     <div className="p-2 rounded border border-gray-700 bg-gray-900/40">
-                      <div className="text-gray-400 text-xs">Recommended Lot</div>
-                      <div className="font-semibold text-cyan-300">{recommendedLot}</div>
+                      <div className="text-gray-400 text-xs">Risk-Based Lot</div>
+                      <div className="font-semibold text-cyan-300">{riskBasedLot}</div>
+                    </div>
+                    <div className="p-2 rounded border border-gray-700 bg-gray-900/40">
+                      <div className="text-gray-400 text-xs">Final Recommended Lot</div>
+                      <div className="font-semibold text-green-300">{recommendedLot}</div>
+                    </div>
+                    <div className="p-2 rounded border border-gray-700 bg-gray-900/40">
+                      <div className="text-gray-400 text-xs">Cap Lot ({liquidityInputs.participationCapPct.toFixed(1)}%)</div>
+                      <div className="font-semibold text-yellow-300">{participationCapLot}</div>
+                    </div>
+                    <div className="p-2 rounded border border-gray-700 bg-gray-900/40">
+                      <div className="text-gray-400 text-xs">Impact (Risk-Based)</div>
+                      <div className={`font-semibold ${requestedImpactPct > 5 ? 'text-red-300' : 'text-cyan-300'}`}>{requestedImpactPct.toFixed(2)}%</div>
+                    </div>
+                    <div className="p-2 rounded border border-gray-700 bg-gray-900/40">
+                      <div className="text-gray-400 text-xs">Impact (Final)</div>
+                      <div className="font-semibold text-cyan-300">{finalImpactPct.toFixed(2)}%</div>
                     </div>
                   </div>
                   <button className="mt-2 w-full px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-sm inline-flex items-center justify-center gap-2">
