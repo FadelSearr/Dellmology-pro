@@ -50,6 +50,15 @@ interface BrokerFlowApiRow {
   is_retail?: boolean;
 }
 
+interface BrokerFlowStats {
+  top_buyer_share_pct?: number;
+  concentration_ratio?: number;
+  supporting_buyers?: number;
+  net_sellers?: number;
+  artificial_liquidity_warning?: boolean;
+  artificial_liquidity_reason?: string | null;
+}
+
 interface BrokerRow {
   broker: string;
   type: 'Whale' | 'Retail';
@@ -233,6 +242,15 @@ interface DeploymentGateState {
   checkedAt: string | null;
 }
 
+interface ArtificialLiquidityState {
+  warning: boolean;
+  reason: string | null;
+  topBuyerSharePct: number;
+  concentrationRatio: number;
+  supportingBuyers: number;
+  netSellers: number;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -369,8 +387,9 @@ function technicalVoteFromUps(ups: number, minUpsForLong: number): VoteSignal {
   return 'NEUTRAL';
 }
 
-function bandarmologyVoteFromFlow(brokers: BrokerRow[]): VoteSignal {
+function bandarmologyVoteFromFlow(brokers: BrokerRow[], artificialLiquidityWarning = false): VoteSignal {
   if (brokers.length === 0) return 'NEUTRAL';
+  if (artificialLiquidityWarning) return 'NEUTRAL';
 
   const whaleNet = brokers.filter((row) => row.type === 'Whale').reduce((sum, row) => sum + row.net, 0);
   const marketNet = brokers.reduce((sum, row) => sum + row.net, 0);
@@ -879,7 +898,15 @@ function CenterPanel({
   );
 }
 
-function RightSidebar({ brokers, zData }: { brokers: BrokerRow[]; zData: ZScorePoint[] }) {
+function RightSidebar({
+  brokers,
+  zData,
+  artificialLiquidity,
+}: {
+  brokers: BrokerRow[];
+  zData: ZScorePoint[];
+  artificialLiquidity: ArtificialLiquidityState;
+}) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
 
@@ -928,6 +955,22 @@ function RightSidebar({ brokers, zData }: { brokers: BrokerRow[]; zData: ZScoreP
         <div className="px-3 py-2 flex justify-between items-center">
           <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Whale Z-Score Anomaly</span>
           <StatusDot status={hasAlert ? 'warning' : 'good'} label={hasAlert ? 'Alert: > 2σ' : 'Normal'} />
+        </div>
+        <div className="px-3 pb-2">
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1',
+              artificialLiquidity.warning
+                ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {artificialLiquidity.warning ? 'Artificial Liquidity Warning' : 'Market-Wide Net Summary OK'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`TopShare ${artificialLiquidity.topBuyerSharePct.toFixed(1)}% | CR ${artificialLiquidity.concentrationRatio.toFixed(2)} | Support ${artificialLiquidity.supportingBuyers}`}
+          </div>
+          {artificialLiquidity.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{artificialLiquidity.reason}</div> : null}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1426,6 +1469,14 @@ export default function Home() {
     reason: null,
     checkedAt: null,
   });
+  const [artificialLiquidity, setArtificialLiquidity] = useState<ArtificialLiquidityState>({
+    warning: false,
+    reason: null,
+    topBuyerSharePct: 0,
+    concentrationRatio: 0,
+    supportingBuyers: 0,
+    netSellers: 0,
+  });
 
   const [infraStatus, setInfraStatus] = useState<{ sse: Tone; db: Tone; integrity: Tone; token: Tone }>({
     sse: 'good',
@@ -1469,7 +1520,7 @@ export default function Home() {
     ]);
 
     const marketIntel = requests[0] as MarketIntelResponse | null;
-    const brokerFlow = requests[1] as { brokers?: BrokerFlowApiRow[] } | null;
+    const brokerFlow = requests[1] as { brokers?: BrokerFlowApiRow[]; stats?: BrokerFlowStats } | null;
     const snapshots = requests[2] as { snapshots?: SnapshotRow[] } | null;
     const heatmap = requests[3] as { heatmap?: HeatmapApiRow[] } | null;
     const confidence = requests[4] as ModelConfidenceResponse | null;
@@ -1541,6 +1592,15 @@ export default function Home() {
     if (brokerRows.length > 0) {
       setBrokers(brokerRows);
     }
+
+    setArtificialLiquidity({
+      warning: Boolean(brokerFlow?.stats?.artificial_liquidity_warning),
+      reason: brokerFlow?.stats?.artificial_liquidity_reason || null,
+      topBuyerSharePct: Number(brokerFlow?.stats?.top_buyer_share_pct || 0),
+      concentrationRatio: Number(brokerFlow?.stats?.concentration_ratio || 0),
+      supportingBuyers: Number(brokerFlow?.stats?.supporting_buyers || 0),
+      netSellers: Number(brokerFlow?.stats?.net_sellers || 0),
+    });
 
     const heatRows = heatmap?.heatmap || [];
     if (heatRows.length > 0) {
@@ -1672,7 +1732,8 @@ export default function Home() {
       : `NORMAL (${minUpsForLong} UPS gate)`;
 
     const technicalVote = technicalVoteFromUps(nextUps, minUpsForLong);
-    const bandarmologyVote = bandarmologyVoteFromFlow(brokerRows);
+    const artificialLiquidityWarning = Boolean(brokerFlow?.stats?.artificial_liquidity_warning);
+    const bandarmologyVote = bandarmologyVoteFromFlow(brokerRows, artificialLiquidityWarning);
     const preliminarySentimentVote = global?.global_sentiment === 'BULLISH' ? 'BUY' : global?.global_sentiment === 'BEARISH' ? 'SELL' : 'NEUTRAL';
     const preliminaryConsensus = buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote);
     setModelConsensus(preliminaryConsensus);
@@ -1691,6 +1752,7 @@ export default function Home() {
         `Price Move (${timeframe}): ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | Volatility: ${volClass}\n` +
         `Risk Gate: ${riskGateLabel}\n` +
         `Deploy Gate: ${deployGate?.blocked ? 'BLOCKED' : 'PASS'}\n` +
+        `Flow Integrity: ${artificialLiquidityWarning ? 'Artificial Liquidity Warning' : 'Healthy'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
@@ -2076,6 +2138,14 @@ export default function Home() {
               bandarmology: modelConsensus.bandarmology,
               sentiment: modelConsensus.sentiment,
             },
+            market_wide_net_summary: {
+              artificial_liquidity_warning: artificialLiquidity.warning,
+              reason: artificialLiquidity.reason,
+              top_buyer_share_pct: artificialLiquidity.topBuyerSharePct,
+              concentration_ratio: artificialLiquidity.concentrationRatio,
+              supporting_buyers: artificialLiquidity.supportingBuyers,
+              net_sellers: artificialLiquidity.netSellers,
+            },
           },
         }),
       });
@@ -2113,6 +2183,12 @@ export default function Home() {
     modelConsensus.technical,
     deploymentGate.blocked,
     deploymentGate.reason,
+    artificialLiquidity.warning,
+    artificialLiquidity.reason,
+    artificialLiquidity.topBuyerSharePct,
+    artificialLiquidity.concentrationRatio,
+    artificialLiquidity.supportingBuyers,
+    artificialLiquidity.netSellers,
   ]);
 
   const runBacktest = useCallback(async () => {
@@ -2379,7 +2455,7 @@ export default function Home() {
           prediction={prediction}
           combatMode={combatMode}
         />
-        <RightSidebar brokers={brokers} zData={zData} />
+        <RightSidebar brokers={brokers} zData={zData} artificialLiquidity={artificialLiquidity} />
       </div>
       {!combatMode.active ? (
         <BottomPanel
