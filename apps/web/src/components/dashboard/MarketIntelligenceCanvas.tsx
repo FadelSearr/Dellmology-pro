@@ -44,6 +44,12 @@ interface MarketIntelligence {
       importance: number;
     }>;
   };
+  data_source?: {
+    provider?: 'PRIMARY_TRADES' | 'FALLBACK_DAILY_PRICES' | 'NONE';
+    degraded?: boolean;
+    reason?: string | null;
+    fallback_delay_minutes?: number;
+  };
 }
 
 export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol: string; timeframe?: string }) => {
@@ -202,6 +208,13 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
 
   return (
     <div className="bg-linear-to-br from-gray-800/60 to-gray-900/60 border border-gray-700 rounded-lg p-6 space-y-6">
+      {data.data_source?.degraded && (
+        <div className="rounded border border-yellow-700 bg-yellow-900/20 px-3 py-2 text-xs text-yellow-300">
+          Graceful Degradation Active • Source: {data.data_source.provider} • Delay ~{data.data_source.fallback_delay_minutes || 15}m
+          {data.data_source.reason ? ` • ${data.data_source.reason}` : ''}
+        </div>
+      )}
+
       {/* TradingView Chart */}
       <div className="w-full">
         <TradingViewWidget symbol={symbol} interval={timeframe} />

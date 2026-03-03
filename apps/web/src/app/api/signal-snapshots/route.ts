@@ -22,7 +22,7 @@ export async function GET(request: Request) {
 
     const result = await db.query(
       `
-        SELECT id, symbol, timeframe, signal, price, unified_power_score, payload, previous_hash, record_hash, hash_version, created_at
+        SELECT id, symbol, timeframe, signal, price, unified_power_score, payload, payload_hash, previous_hash, record_hash, hash_version, created_at
         FROM signal_snapshots
         ORDER BY created_at DESC
         LIMIT $1
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     );
 
     const previousHash = previous.rows[0]?.record_hash || null;
-    const payloadDigest = sha256(JSON.stringify(body.payload));
+    const payloadDigest = sha256(stableStringify(body.payload));
     const recordHash = sha256(
       [
         previousHash || 'GENESIS',
@@ -82,11 +82,12 @@ export async function POST(request: Request) {
           price,
           unified_power_score,
           payload,
+          payload_hash,
           previous_hash,
           record_hash,
           hash_version
-        ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, 1)
-        RETURNING id, created_at, previous_hash, record_hash, hash_version
+        ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, 2)
+        RETURNING id, created_at, payload_hash, previous_hash, record_hash, hash_version
       `,
       [
         body.symbol.toUpperCase(),
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
         body.price ?? null,
         body.unified_power_score ?? null,
         JSON.stringify(body.payload),
+        payloadDigest,
         previousHash,
         recordHash,
       ],
@@ -104,6 +106,7 @@ export async function POST(request: Request) {
       success: true,
       snapshot_id: inserted.rows[0]?.id,
       created_at: inserted.rows[0]?.created_at,
+      payload_hash: inserted.rows[0]?.payload_hash,
       previous_hash: inserted.rows[0]?.previous_hash,
       record_hash: inserted.rows[0]?.record_hash,
       hash_version: inserted.rows[0]?.hash_version,
@@ -124,11 +127,17 @@ async function ensureSignalSnapshotsTable() {
       price NUMERIC,
       unified_power_score INTEGER,
       payload JSONB NOT NULL,
+      payload_hash TEXT,
       previous_hash TEXT,
       record_hash TEXT,
       hash_version SMALLINT NOT NULL DEFAULT 1,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE signal_snapshots
+    ADD COLUMN IF NOT EXISTS payload_hash TEXT
   `);
 
   await db.query(`
@@ -160,4 +169,18 @@ async function ensureSignalSnapshotsTable() {
 
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  const objectValue = value as Record<string, unknown>;
+  const keys = Object.keys(objectValue).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(objectValue[key])}`).join(',')}}`;
 }

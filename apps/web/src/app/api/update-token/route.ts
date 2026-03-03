@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { computeShortLivedExpiry, encryptSessionToken } from '@/lib/security/sessionTokenCrypto';
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 
@@ -54,7 +55,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Store token in database
+    const effectiveExpiry = computeShortLivedExpiry(expiresAtDate);
+    const encryptedToken = encryptSessionToken(token);
+
+    // Store encrypted token in database
     const query = `
       INSERT INTO config (key, value, expires_at, updated_at)
       VALUES ('session_token', $1, $2, NOW())
@@ -67,8 +71,8 @@ export async function POST(req: NextRequest) {
     `;
 
     const result = await db.query(query, [
-      token,
-      expiresAtDate ? expiresAtDate.toISOString() : null,
+      encryptedToken,
+      effectiveExpiry.toISOString(),
     ]);
 
     if (!result.rows || result.rows.length === 0) {
@@ -80,8 +84,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: 'Token updated successfully',
-        expires_at: expiresAtDate ? expiresAtDate.toISOString() : null,
+        message: 'Token updated successfully (encrypted + short-lived TTL)',
+        expires_at: effectiveExpiry.toISOString(),
       },
       {
         status: 200,

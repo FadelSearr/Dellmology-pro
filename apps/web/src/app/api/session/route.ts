@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { decryptSessionToken } from '@/lib/security/sessionTokenCrypto';
 import { NextResponse } from 'next/server';
 
 // Ensure the API is not cached
@@ -29,7 +30,8 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ token: tokenData.value });
+    const decryptedToken = decryptSessionToken(tokenData.value);
+    return NextResponse.json({ token: decryptedToken });
 
   } catch (error) {
     console.error('Error fetching session token:', error);
