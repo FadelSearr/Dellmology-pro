@@ -159,6 +159,8 @@ interface LiquidityGuard {
   dailyVolumeLots: number;
   capPct: number;
   maxLots: number;
+  impactPct: number;
+  highImpactOrder: boolean;
   warning: string | null;
 }
 
@@ -1418,7 +1420,9 @@ function BottomPanel({
               <div>{`Daily Vol: ${liquidityGuard.dailyVolumeLots.toLocaleString()} lots`}</div>
               <div>{`Participation Cap: ${(liquidityGuard.capPct * 100).toFixed(1)}%`}</div>
               <div className="text-cyan-400">{`Max Recommended: ${liquidityGuard.maxLots.toLocaleString()} lots`}</div>
+              <div>{`Order Impact: ${(liquidityGuard.impactPct * 100).toFixed(2)}% of daily vol`}</div>
               {liquidityGuard.warning ? <div className="text-amber-400 mt-1">{liquidityGuard.warning}</div> : null}
+              {liquidityGuard.highImpactOrder ? <div className="text-rose-400 mt-1 font-bold">High Impact Order - Liquidity Risk!</div> : null}
               <div className={cn('mt-1', systemicRisk.high ? 'text-rose-400' : 'text-emerald-400')}>
                 {`Beta: ${systemicRisk.betaEstimate.toFixed(2)} / ${systemicRisk.threshold.toFixed(2)} ${systemicRisk.high ? '(Systemic Risk High)' : '(Normal)'}`}
               </div>
@@ -2497,12 +2501,18 @@ export default function Home() {
   const estimatedDailyVolumeLots = Math.max(1, Math.floor(estimatedDailyVolumeShares / 100));
   const participationCapPct = killSwitchActive ? runtimeParticipationCapRiskPct : runtimeParticipationCapNormalPct;
   const maxRecommendedLots = Math.max(1, Math.floor(estimatedDailyVolumeLots * participationCapPct));
+  const impactPct = estimatedDailyVolumeLots > 0 ? maxRecommendedLots / estimatedDailyVolumeLots : 1;
+  const highImpactOrder = impactPct > 0.05;
   const liquidityGuard: LiquidityGuard = {
     dailyVolumeLots: estimatedDailyVolumeLots,
     capPct: participationCapPct,
     maxLots: maxRecommendedLots,
+    impactPct,
+    highImpactOrder,
     warning:
-      maxRecommendedLots < 20
+      highImpactOrder
+        ? 'High Impact Order - Liquidity Risk!'
+        : maxRecommendedLots < 20
         ? 'Liquidity warning: cap < 20 lots, high slippage risk'
         : maxRecommendedLots < 100
           ? 'Moderate liquidity: keep entries staggered'
@@ -2787,6 +2797,8 @@ export default function Home() {
         daily_volume_lots: liquidityGuard.dailyVolumeLots,
         participation_cap_pct: liquidityGuard.capPct,
         max_recommended_lots: liquidityGuard.maxLots,
+        impact_pct: liquidityGuard.impactPct,
+        high_impact_order: liquidityGuard.highImpactOrder,
         warning: liquidityGuard.warning,
       },
       beta_guard: {
@@ -2946,6 +2958,8 @@ export default function Home() {
     killSwitchActive,
     liquidityGuard.capPct,
     liquidityGuard.dailyVolumeLots,
+    liquidityGuard.impactPct,
+    liquidityGuard.highImpactOrder,
     liquidityGuard.maxLots,
     liquidityGuard.warning,
     minUpsForLong,
@@ -3058,6 +3072,8 @@ export default function Home() {
             daily_volume_lots: liquidityGuard.dailyVolumeLots,
             participation_cap_pct: liquidityGuard.capPct,
             max_recommended_lots: liquidityGuard.maxLots,
+            impact_pct: liquidityGuard.impactPct,
+            high_impact_order: liquidityGuard.highImpactOrder,
             warning: liquidityGuard.warning,
           },
           beta_guard: {
@@ -3123,6 +3139,8 @@ export default function Home() {
     killSwitchActive,
     liquidityGuard.capPct,
     liquidityGuard.dailyVolumeLots,
+    liquidityGuard.impactPct,
+    liquidityGuard.highImpactOrder,
     liquidityGuard.maxLots,
     liquidityGuard.warning,
     minUpsForLong,
