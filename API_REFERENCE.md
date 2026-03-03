@@ -10,6 +10,7 @@ Complete API documentation for all services in Dellmology Pro.
 - [ML Engine APIs](#ml-engine-apis)
 - [Frontend APIs](#frontend-apis)
 - [Signal Snapshot Audit APIs](#signal-snapshot-audit-apis)
+- [News Impact Overlay API](#news-impact-overlay-api)
 - [Streamer APIs](#streamer-apis)
 - [Error Handling](#error-handling)
 - [Rate Limiting](#rate-limiting)
@@ -547,6 +548,46 @@ GET /api/signal-snapshots/integrity?limit=200&symbol=BBCA
   "checksum_failures": 0,
   "issues": [],
   "checked_at": "2026-03-04T10:30:00Z"
+}
+```
+
+---
+
+## News Impact Overlay API
+
+**Base URL**: `http://localhost:3000/api`
+
+This endpoint computes headline stress and historical red-flag markers used by dashboard risk overlay to penalize Unified Power Score (UPS).
+
+### GET /api/news-impact
+
+Analyze recent headlines for a symbol and return stress score + UPS penalty recommendation.
+
+**Request**:
+```
+GET /api/news-impact?symbol=BBCA
+```
+
+**Response** (200 OK):
+```json
+{
+  "success": true,
+  "symbol": "BBCA",
+  "stress_score": 42.5,
+  "penalty_ups": 12,
+  "risk_label": "MEDIUM",
+  "red_flags": [
+    "Legal dispute",
+    "Debt stress signal"
+  ],
+  "sampled_headlines": [
+    {
+      "title": "bbca faces debt stress concern in sector outlook",
+      "score": 16,
+      "red_flags": ["Debt stress signal"]
+    }
+  ],
+  "checked_at": "2026-03-04T11:00:00Z"
 }
 ```
 
