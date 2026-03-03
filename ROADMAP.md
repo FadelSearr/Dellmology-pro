@@ -1,55 +1,7 @@
 🗺️ Roadmap Eksekusi Dellmology Pro
 
 Desain / Prototipe Absolute
-Gemini berkata
-Berikut adalah rancangan desain tata letak (layout) detail untuk platform Dellmology dalam format vertical scroll. Desain ini menggunakan struktur Bento Grid yang modular dengan skema warna Dark Tech untuk menonjolkan data teknis dan aliran bandarmology.
-
-🏗️ Section 0: The Command Bar (Sticky Header)
-Bar navigasi utama yang tetap berada di atas layar (sticky) untuk akses instan dan pemantauan sistem secara menyeluruh.
-•	Search Emiten Bar (Pusat Navigasi): Kotak pencarian utama dengan fitur autocomplete dan pencarian cerdas.
-o	Live Info: Menampilkan harga last, persentase perubahan harian, dan indikator Market Regime langsung di samping kode emiten saat dicari.
-•	Regime Status Badge: Penanda kondisi pasar dinamis (misal: BULLISH - VOLATILITY: HIGH).
-•	Global Correlation Marquee: Ticker teks berjalan untuk harga komoditas (Emas, Coal, Nikel) dan Indeks (IHSG, DJI).
-•	System Health Indicators: Tiga lampu LED (SSE, DB, Shield) untuk memantau integritas data.
-•	API Rate-Limit Tracker: Bar kecil untuk memantau kuota request ke pihak ketiga.
-________________________________________
-📈 Section 1: Market Intelligence Canvas (Visual Analysis)
-Visualisasi grafik utama untuk menentukan titik entry teknikal.
-•	Advanced Chart (Full Width): Grafik TradingView terintegrasi dengan Deep CNN Technical Overlay untuk deteksi pola otomatis.
-•	Order Flow Heatmap (Right Sidebar): Visualisasi ketebalan antrean bid/offer untuk melihat "tembok" harga (Big Walls) secara real-time.
-•	Exit Whale & Liquidity Hunt: Radar visual titik-titik oranye untuk mendeteksi distribusi halus oleh institusi besar.
-•	Unified Power Score (UPS) Bar: Bar indikator konfluens final (skala 0-100) di bawah chart utama.
-________________________________________
-🌊 Section 2: The Flow Engine (Bandarmology Hub)
-Pusat pelacakan aliran uang besar (Whale) secara mendalam.
-•	Broker Flow Control Bar:
-o	Filters: Tombol filter cepat untuk Smart Money, Whale, Retail, dan Mix.
-o	Timeline Switcher: Pilihan durasi analisis 1D, 7D, 14D, dan 21D.
-•	Deep Broker Flow Table:
-o	Daily Heatmap: Bar mini (spark-bars) untuk melihat akumulasi/distribusi 7 hari terakhir (D-6 ke D0).
-o	Net Value: Angka akumulasi bersih broker.
-o	Consistency Score: Rasio keaktifan broker dalam periode terpilih (misal: 5/7 hari).
-•	Whale Z-Score & Wash Sale Alert: Grafik anomali volume dan peringatan transaksi semu.
-________________________________________
-🧠 Section 3: Neural Narrative Hub (Intelligence & Screener)
-Pusat pemindaian pasar proaktif dan narasi AI.
-•	AI Screener Navigation Bar (Sub-Nav Khusus):
-o	Daytrade Mode: Mencari saham dengan volatilitas tinggi dan dominasi HAKA (Aggressive Buy) real-time.
-o	Swing Mode: Mencari saham dengan akumulasi broker konsisten dan pola teknikal solid.
-o	Custom Range Filter: Navigasi untuk mengatur filter harga (misal: Rp 100 - Rp 500) dan parameter kustom lainnya.
-•	AI Narrative Terminal (Gemini): Ringkasan SWOT strategis dalam bahasa manusia yang merangkum hasil screener atau analisis broker flow.
-•	Retail Sentiment Divergence: Grafik pembanding antusiasme retail vs pergerakan harga Whale.
-________________________________________
-🛡️ Section 4: Risk & Tactical Dock (Execution)
-Persiapan eksekusi entry/exit dan perlindungan modal.
-•	Smart Position Bar: Kalkulator otomatis untuk menghitung jumlah lot berdasarkan ATR (Volatility) dan risiko.
-•	Action Dock: Tombol cepat untuk Send to Telegram, Set Price Alert, dan ekspor laporan PDF.
-________________________________________
-📑 Section 5: Performance & Infrastructure Lab (Footer)
-Transparansi performa sistem dan kesehatan teknis.
-•	Automated Backtesting Rig & XAI Log: Uji coba strategi historis dengan penjelasan AI (Explainable AI).
-•	Infrastructure Logs: Baris data teknis dari Go + SSE dan TimescaleDB untuk pemantauan backend.
-
+🖥️ Layout: The Dellmology Command CenterLayout ini menggunakan pembagian layar yang kaku namun modular (Bento Grid) agar mata Anda bisa melakukan scanning data dalam hitungan detik.1. Top Navigation Bar (The Pulse)Tetap tipis di bagian paling atas untuk memaksimalkan area kerja.Search Emiten Bar: Kotak pencarian cerdas di pojok kiri atas dengan live price dan regime status.Global Marquee: Ticker berjalan untuk korelasi harga Gold, Coal, Nickel, dan IHSG secara real-time.Infrastructure Health: Indikator LED kecil untuk status Go + SSE, TimescaleDB, dan Data Integrity Shield.2. Left Sidebar: Discovery & Intelligence (AI Screener)Panel sempit di sisi kiri untuk berpindah fokus antar emiten.Screener Navigation: Tab khusus untuk berpindah mode secara instan:Daytrade: Mencari volatilitas dan dominasi HAKA.Swing: Mencari akumulasi konsisten dan pola teknikal solid.Custom: Filter rentang harga (Rp 100 - Rp 500).Watchlist: Daftar emiten yang sedang Anda pantau dengan ringkasan Unified Power Score di sampingnya.3. Center Panel: Visual Analysis (The Canvas)Area terbesar untuk melihat pergerakan harga secara mendalam.Advanced Chart (Top-Center): Grafik utama dengan CNN Technical Overlay yang otomatis mendeteksi pola chart.Order Flow Heatmap: Terintegrasi di sisi kanan chart untuk melihat "tembok" harga.Unified Power Score (Bottom-Center): Bar gradasi warna (0-100) sebagai konfirmasi final sinyal.4. Right Sidebar: Whale & Flow Engine (The Tape)Pusat data Bandarmology yang paling sering Anda lirik.Deep Broker Flow Table: Tabel yang menampilkan Identity (Whale/Retail), Daily Heatmap (Spark-bars), Net Value, dan Consistency Score.Whale Z-Score & Wash Sale Alert: Grafik anomali volume dan notifikasi transaksi semu di bawah tabel.Negotiated Market Monitor: Feed kecil untuk transaksi pasar negosiasi.5. Bottom Panel: Execution & AI Narrative (The Brain)Panel horizontal di bagian bawah untuk merangkum dan mengeksekusi.AI Narrative Terminal: Narasi strategi dari Gemini yang merangkum kondisi teknikal dan broker flow.Smart Position sizing: Kalkulator otomatis lot berdasarkan ATR Volatility.Action Dock: Tombol cepat untuk Send to Telegram dan kontrol Backtesting Rig.🎨 Perbandingan EfisiensiFiturVertical ScrollWorkspace Layout (Dashboard)Konteks DataTerpisah-pisah saat di-scroll.Terlihat semua secara bersamaan.KecepatanMenengah (butuh gerakan mouse).Sangat Tinggi (hanya gerakan mata).PenggunaanCocok untuk Mobile/Analisis Santai.Cocok untuk Trader Aktif/Daytrading.
 
 Fitur Fitur
 1. Core Infrastructure & Data Engine (Pondasi)

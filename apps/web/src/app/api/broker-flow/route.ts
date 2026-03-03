@@ -12,23 +12,47 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const symbol = searchParams.get('symbol') || 'BBCA';
+    const symbol = (searchParams.get('symbol') || 'BBCA').toUpperCase();
     const days = parseInt(searchParams.get('days') || '7');
     const filter = searchParams.get('filter') || 'mix';
 
-    // Query broker summaries from database
+    // Build date range for the requested period and aggregate daily net values per broker
     const query = `
-      SELECT 
-        broker_id,
-        SUM(net_buy_value) as total_net_buy,
-        AVG(avg_buy_price) as avg_buy_price,
-        COUNT(DISTINCT date) as active_days,
-        array_agg(net_buy_value ORDER BY date) as daily_data
-      FROM broker_summaries
-      WHERE symbol = $1
-        AND date >= NOW()::date - $2::interval
-      GROUP BY broker_id
-      ORDER BY ABS(total_net_buy) DESC
+      WITH date_range AS (
+        SELECT generate_series(
+          date_trunc('day', NOW()) - ($2::interval) + interval '1 day',
+          date_trunc('day', NOW()),
+          '1 day'
+        )::date AS day
+      ),
+      daily_sums AS (
+        SELECT
+          broker_code,
+          date_trunc('day', time)::date AS day,
+          SUM(net_value) AS daily_net,
+          AVG(buy_volume) AS avg_buy
+        FROM broker_flow
+        WHERE symbol = $1
+          AND time >= NOW()::date - $2::interval
+        GROUP BY broker_code, date_trunc('day', time)
+      ),
+      broker_list AS (
+        SELECT DISTINCT broker_code FROM daily_sums
+      )
+      SELECT
+        b.broker_code AS broker_id,
+        COALESCE(SUM(ds.daily_net),0) AS total_net_buy,
+        COALESCE(AVG(ds.avg_buy),0) AS avg_buy_price,
+        COUNT(ds.day) AS active_days,
+        ARRAY_AGG(
+          COALESCE(ds.daily_net,0) ORDER BY dr.day
+        ) AS daily_data
+      FROM broker_list b
+      CROSS JOIN date_range dr
+      LEFT JOIN daily_sums ds
+        ON ds.broker_code = b.broker_code AND ds.day = dr.day
+      GROUP BY b.broker_code
+      ORDER BY ABS(COALESCE(SUM(ds.daily_net),0)) DESC
       LIMIT 15
     `;
 
@@ -45,12 +69,16 @@ export async function GET(request: Request) {
       is_retail: Math.abs(row.total_net_buy) < 500000000    // < 500M IDR
     }));
 
-    // Calculate Z-Scores
-    const netValues = brokers.map(b => b.net_buy_value);
-    const mean = netValues.reduce((a, b) => a + b, 0) / netValues.length;
-    const stdDev = Math.sqrt(
-      netValues.reduce((sq, n) => sq + Math.pow(n - mean, 2), 0) / netValues.length
-    );
+    let mean = 0;
+    let stdDev = 0;
+    if (brokers.length > 0) {
+      // Calculate Z-Scores
+      const netValues = brokers.map(b => b.net_buy_value);
+      mean = netValues.reduce((a, b) => a + b, 0) / netValues.length;
+      stdDev = Math.sqrt(
+        netValues.reduce((sq, n) => sq + Math.pow(n - mean, 2), 0) / netValues.length
+      );
+    }
 
     const brokersWithZScore = brokers.map((b: any) => ({
       ...b,
@@ -71,7 +99,10 @@ export async function GET(request: Request) {
     // Detect wash sales
     const totalVolume = result.rows.length;
     const avgNetValue = Math.abs(mean);
-    const totalAccumulation = Math.abs(netValues.reduce((a, b) => a + b, 0));
+    // use brokers list for accumulation to avoid reference errors
+    const totalAccumulation = Math.abs(
+      brokers.reduce((acc, b) => acc + (b.net_buy_value || 0), 0)
+    );
     const washSaleScore = totalVolume > 0 
       ? (1 - totalAccumulation / (totalVolume * 1000000000)) * 100 
       : 0;

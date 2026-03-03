@@ -84,9 +84,29 @@ export async function GET(request: NextRequest) {
 
     if (heatmapError) {
       console.error('Heatmap fetch error:', heatmapError);
+      // Return graceful empty data instead of 500 error
       return NextResponse.json(
-        { error: 'Failed to fetch heatmap data' },
-        { status: 500 }
+        {
+          symbol,
+          timestamp: new Date().toISOString(),
+          heatmap: { prices: [], bidVolumes: [], askVolumes: [], netVolumes: [], bidAskRatios: [], intensities: [] },
+          marketDepth: null,
+          hakaHaki: null,
+          anomalies: [],
+          stats: {
+            totalDataPoints: 0,
+            minPrice: 0,
+            maxPrice: 0,
+            avgIntensity: 0,
+            anomalyCount: 0,
+          },
+        },
+        {
+          headers: {
+            'Cache-Control': 'public, s-maxage=15, stale-while-revalidate=60',
+            'Content-Type': 'application/json',
+          },
+        }
       );
     }
 

@@ -22,7 +22,8 @@ const TradingViewWidget = ({ symbol, width = '100%', height = 400, interval = '6
         new (window as any).TradingView.widget({
           width,
           height,
-          symbol: `IDX/${symbol}`,
+          // TradingView uses EXCHANGE:SYMBOL format
+          symbol: `IDX:${symbol}`,
           interval,
           timezone: 'Etc/UTC',
           theme: 'dark',

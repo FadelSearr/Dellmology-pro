@@ -96,16 +96,18 @@ pip install -r requirements.txt
 3. **Setup Node.js**
 ```bash
 cd apps/web
-npm install
+# install dependencies; some packages have conflicting peers so we use
+# legacy-peer-deps which matches the lockfile used when the project was
+# originally built.
+npm install --legacy-peer-deps
 ```
-
 4. **Setup Go Services**
 ```bash
 cd apps/streamer
 go mod download
-go run main.go market_regime.go broker_analysis.go
+# build/run entire package (includes order_flow.go etc.)
+go run .
 ```
-
 ### Running the Platform
 
 **Terminal 1: Database**
@@ -115,23 +117,23 @@ docker-compose up
 
 **Terminal 2: Go Streamer**
 ```bash
-cd apps/streamer
-go run main.go market_regime.go broker_analysis.go
+cd.apps/streamer
+go run .            # compile & run all files in the package
 ```
-
 **Terminal 3: Python ML Services**
 ```bash
 cd apps/ml-engine
-python global_market_aggregator.py  # Fetch commodity data every 5 min
+# run Python ML services (entrypoint renamed to main.py)
+python main.py  # example: fetch commodity data, start telegram, etc.
 # python train.py  # Train CNN model (optional)
 ```
 
 **Terminal 4: Next.js Frontend**
 ```bash
 cd apps/web
+npm install --legacy-peer-deps   # if you haven't already
 npm run dev  # http://localhost:3000
 ```
-
 ---
 
 ## 🏗️ Architecture Overview
@@ -290,6 +292,27 @@ Body: {
 
 ### Monitor BBCA Broker Flow
 1. Open dashboard → Search "BBCA"
+
+> **Note:** the search box pulls symbols from the `daily_prices` table. If you
+> just initialized the database and haven't run the streamer/scraper yet, the
+> table will be empty and the autocomplete will fall back to a few top stocks.
+> Start the `apps/streamer` service (or import a list of tickers) to populate
+IDX symbols before relying on full search coverage.  You can also manually seed symbols (and generate some dummy broker_flow rows for development) by running the helper script. Two options are provided:
+
+```powershell
+# TypeScript version (requires ts-node)
+cd c:\IDX_Analyst
+npm install -g ts-node # if not installed
+npx ts-node scripts/populate_symbols.ts
+```
+
+or use the JavaScript copy which simply needs Node + the web project dependencies:
+
+```powershell
+cd c:\IDX_Analyst\apps\web
+node scripts/populate_symbols.js
+```
+
 2. View Flow Engine → Filter "Whale"
 3. Read AI Narrative for insights
 

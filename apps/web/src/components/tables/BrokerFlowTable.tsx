@@ -12,6 +12,7 @@ interface BrokerEntry {
   z_score?: number;
   is_whale?: boolean;
   is_retail?: boolean;
+  daily_heatmap?: number[]; // array of net values ordered by day
 }
 
 interface BrokerFlowTableProps {
@@ -28,40 +29,54 @@ export const BrokerFlowTable: React.FC<BrokerFlowTableProps> = ({
   symbol,
   filterType = 'ALL',
 }) => {
-  // Mock daily heatmap data (D-6 to D0)
-  const dailyPattern = [
-    { day: 'D-6', net: 250000, sentiment: 'up' },
-    { day: 'D-5', net: -50000, sentiment: 'down' },
-    { day: 'D-4', net: 150000, sentiment: 'up' },
-    { day: 'D-3', net: 200000, sentiment: 'up' },
-    { day: 'D-2', net: 100000, sentiment: 'up' },
-    { day: 'D-1', net: -30000, sentiment: 'down' },
-    { day: 'D0', net: 180000, sentiment: 'up' },
-  ];
+  // convert broker.daily_heatmap (numbers) into items with sentiment
+  const buildPattern = (heatmap?: number[]) => {
+    if (!heatmap || heatmap.length === 0) {
+      return [];
+    }
+    return heatmap.map((net, idx) => ({
+      day: `D-${heatmap.length - idx - 1}`,
+      net,
+      sentiment: net >= 0 ? 'up' : 'down',
+    }));
+  };
+
 
   const filteredData =
     filterType === 'WHALE' ? data.filter((b) => b.is_whale) : filterType === 'RETAIL' ? data.filter((b) => b.is_retail) : data;
 
   return (
     <div className="space-y-4">
-      {/* Daily Heatmap */}
+      {/* Daily Heatmap (show first broker or static) */}
       <div className="bg-gray-900/30 p-3 rounded-lg border border-gray-700/30 space-y-2">
         <p className="text-xs font-semibold text-gray-400 uppercase">7-Day Accumulation Pattern</p>
         <div className="flex gap-1.5">
-          {dailyPattern.map((day) => (
-            <div key={day.day} className="flex flex-col items-center gap-1">
-              <div
-                className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                  day.sentiment === 'up'
-                    ? 'bg-green-900/40 border border-green-700 text-green-300'
-                    : 'bg-red-900/40 border border-red-700 text-red-300'
-                }`}
-              >
-                {day.sentiment === 'up' ? '+' : '-'}
+          {(() => {
+            const sample = filteredData[0]?.daily_heatmap;
+            const pattern = sample ? buildPattern(sample) : [
+              { day: 'D-6', net: 0, sentiment: 'up' },
+              { day: 'D-5', net: 0, sentiment: 'up' },
+              { day: 'D-4', net: 0, sentiment: 'up' },
+              { day: 'D-3', net: 0, sentiment: 'up' },
+              { day: 'D-2', net: 0, sentiment: 'up' },
+              { day: 'D-1', net: 0, sentiment: 'up' },
+              { day: 'D0', net: 0, sentiment: 'up' },
+            ];
+            return pattern.map((day) => (
+              <div key={day.day} className="flex flex-col items-center gap-1">
+                <div
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+                    day.sentiment === 'up'
+                      ? 'bg-green-900/40 border border-green-700 text-green-300'
+                      : 'bg-red-900/40 border border-red-700 text-red-300'
+                  }`}
+                >
+                  {day.sentiment === 'up' ? '+' : '-'}
+                </div>
+                <span className="text-xs text-gray-500">{day.day}</span>
               </div>
-              <span className="text-xs text-gray-500">{day.day}</span>
-            </div>
-          ))}
+            ));
+          })()}
         </div>
       </div>
 

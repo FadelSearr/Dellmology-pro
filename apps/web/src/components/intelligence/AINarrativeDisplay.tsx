@@ -36,16 +36,25 @@ export const AINarrativeDisplay = ({
         // Fetch appropriate data first
         if (type === 'broker') {
           const res = await fetch(`/api/broker-flow?symbol=${symbol}&days=7&filter=mix`);
+          if (!res.ok) {
+            throw new Error('Failed to fetch broker flow for narrative');
+          }
           const brokerData = await res.json();
+          if (!brokerData.stats) {
+            throw new Error('Broker flow stats missing');
+          }
           data.data = {
-            whales: brokerData.brokers.filter((b: any) => b.is_whale).slice(0, 3),
-            wash_sale_score: brokerData.stats.wash_sale_score,
+            whales: brokerData.brokers?.filter((b: any) => b.is_whale).slice(0, 3) || [],
+            wash_sale_score: brokerData.stats.wash_sale_score || 0,
             consistency: brokerData.stats.total_brokers > 0 ? 1 : 0,
             period: '7 days'
           };
         } else if (type === 'regime') {
           const res = await fetch('/api/market-regime');
           data.data = await res.json();
+        } else {
+          // other types (screener, swot) may not require pre-fetched data
+          data.data = {};
         }
 
         const response = await fetch('/api/narrative', {
@@ -55,7 +64,9 @@ export const AINarrativeDisplay = ({
         });
 
         if (!response.ok) {
-          throw new Error('Failed to generate narrative');
+          const text = await response.text();
+          console.error('Narrative API error', response.status, text);
+          throw new Error(`Failed to generate narrative (${response.status})`);
         }
 
         const result = await response.json();

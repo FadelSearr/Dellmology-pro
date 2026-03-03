@@ -35,8 +35,27 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  const topStocks = ['BBCA', 'ASII', 'TLKM', 'GOOGL', 'TSLA'];
-  const filteredSuggestions = topStocks.filter((stock) =>
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+
+  const fetchSuggestions = async (q: string) => {
+    if (!q) {
+      setSuggestions([]);
+      return;
+    }
+    try {
+      const resp = await fetch(`/api/symbols?q=${encodeURIComponent(q)}`);
+      const json = await resp.json();
+      if (json.success) {
+        setSuggestions(json.symbols || []);
+      }
+    } catch (err) {
+      console.error('symbol lookup failed', err);
+    }
+  };
+
+  const topStocks = ['BBCA', 'ASII', 'TLKM', 'GOTO', 'BMRI'];
+  // if API returns nothing (table not scraped yet), fall back to a small sample list
+  const filteredSuggestions = suggestions.length > 0 ? suggestions : topStocks.filter((stock) =>
     stock.toUpperCase().includes(searchInput.toUpperCase())
   );
 
@@ -45,6 +64,14 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
     setShowSuggestions(false);
     onSymbolChange?.(symbol);
   };
+
+  // debounce lookup
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      fetchSuggestions(searchInput);
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
   // Close suggestions on outside click
   useEffect(() => {
@@ -57,21 +84,15 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const regimeColor = {
-    BULLISH: 'text-green-400',
-    BEARISH: 'text-red-400',
-    SIDEWAYS: 'text-yellow-400',
-  };
-
   return (
-    <div className="sticky top-0 z-50 bg-gray-900/95 backdrop-blur-xl border-b border-gray-700/50 py-3">
-      <div className="max-w-screen-2xl mx-auto px-4">
-        {/* Main Row: Search + Regime + Info */}
-        <div className="flex items-center justify-between gap-4 mb-3">
+    <div className="sticky top-0 z-50 bg-gray-900/95 backdrop-blur-xl border-b border-gray-700/50 py-2">
+      <div className="max-w-screen-2xl mx-auto px-3">
+        {/* Single Pulse Row */}
+        <div className="flex items-center justify-between gap-3">
           {/* Search Bar */}
-          <div ref={searchRef} className="flex-1 max-w-md relative">
+          <div ref={searchRef} className="flex-1 max-w-sm relative">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
               <input
                 type="text"
                 placeholder="Search stock (e.g. BBCA, ASII)..."
@@ -81,7 +102,7 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
                   setShowSuggestions(true);
                 }}
                 onFocus={() => setShowSuggestions(true)}
-                className="w-full pl-9 pr-4 py-2 bg-gray-800/50 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
+                className="w-full pl-8 pr-3 py-1.5 bg-gray-800/50 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
               />
 
               {/* Suggestions Dropdown */}
@@ -91,10 +112,10 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
                     <button
                       key={stock}
                       onClick={() => handleSelectStock(stock)}
-                      className="w-full text-left px-4 py-2 hover:bg-gray-700/50 text-white transition-colors"
+                      className="w-full text-left px-3 py-1.5 hover:bg-gray-700/50 text-white transition-colors"
                     >
                       <span className="font-semibold">{stock}</span>
-                      <span className="ml-2 text-gray-400 text-sm">Index Stock</span>
+                      <span className="ml-2 text-gray-400 text-xs">Index Stock</span>
                     </button>
                   ))}
                 </div>
@@ -109,6 +130,28 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
               label={`${marketRegime} - VOL: ${volatility}`}
               icon={<TrendingUp className="w-3 h-3" />}
             />
+          </div>
+
+          {/* Inline Global Correlation Marquee */}
+          <div className="hidden lg:block flex-1 overflow-hidden">
+            <div className="inline-flex gap-5 animate-scroll whitespace-nowrap text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400">Gold:</span>
+                <span className="text-green-400 font-mono">+0.5%</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400">Coal:</span>
+                <span className="text-red-400 font-mono">-1.2%</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400">Nickel:</span>
+                <span className="text-green-400 font-mono">+2.1%</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-400">IHSG:</span>
+                <span className="text-green-400 font-mono">7,200</span>
+              </div>
+            </div>
           </div>
 
           {/* System Health */}
@@ -131,47 +174,17 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
           </div>
 
           {/* Settings */}
-          <button className="p-2 hover:bg-gray-800/50 rounded-lg transition-colors text-gray-400 hover:text-white">
-            <Settings className="w-5 h-5" />
+          <button className="p-1.5 hover:bg-gray-800/50 rounded-lg transition-colors text-gray-400 hover:text-white">
+            <Settings className="w-4 h-4" />
           </button>
-        </div>
-
-        {/* Second Row: Global Correlation Marquee + Rate Limit */}
-        <div className="flex items-center justify-between gap-4">
-          {/* Marquee */}
-          <div className="flex-1 overflow-hidden">
-            <div className="text-xs text-gray-500 mb-1">📊 GLOBAL CORRELATION</div>
-            <div className="inline-flex gap-8 animate-scroll whitespace-nowrap">
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400">GOLD:</span>
-                <span className="text-yellow-400 font-mono">$2,045.50</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400">COAL:</span>
-                <span className="text-orange-400 font-mono">$145.30</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400">NICKEL:</span>
-                <span className="text-red-400 font-mono">$18,500</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400">IHSG:</span>
-                <span className="text-green-400 font-mono">↑ 7,245.50</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400">DJI:</span>
-                <span className="text-green-400 font-mono">↑ 38,456.20</span>
-              </div>
-            </div>
-          </div>
 
           {/* Rate Limit */}
-          <div className="flex items-center gap-3 min-w-max">
+          <div className="flex items-center gap-2.5 min-w-max">
             <div className="text-right">
-              <div className="text-xs text-gray-500">API Quota</div>
-              <div className="text-sm font-semibold text-white">{rateLimitUsage}%</div>
+              <div className="text-[10px] text-gray-500">API Quota</div>
+              <div className="text-xs font-semibold text-white">{rateLimitUsage}%</div>
             </div>
-            <div className="w-24 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
               <div
                 className={`h-full transition-all ${
                   rateLimitUsage > 80 ? 'bg-red-500' : rateLimitUsage > 60 ? 'bg-yellow-500' : 'bg-green-500'

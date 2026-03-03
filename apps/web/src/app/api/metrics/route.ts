@@ -12,6 +12,10 @@ export async function GET(req: NextRequest) {
 
     if (!resp.ok) {
       const text = await resp.text()
+      // if upstream returns 404 because symbol not found or endpoint missing, return empty list
+      if (resp.status === 404) {
+        return NextResponse.json({ success: true, metrics: [] });
+      }
       return NextResponse.json({ success: false, error: text }, { status: resp.status })
     }
 

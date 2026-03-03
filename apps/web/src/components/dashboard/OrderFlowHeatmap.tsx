@@ -73,7 +73,9 @@ export const OrderFlowHeatmap = ({ symbol = 'BBCA' }: { symbol: string }) => {
         );
 
         if (!response.ok) {
-          throw new Error('Failed to fetch order flow data');
+          const body = await response.text();
+          console.error('Order flow API non-ok', response.status, body);
+          throw new Error(`Failed to fetch order flow data (${response.status})`);
         }
 
         const data = await response.json();

@@ -9,9 +9,17 @@ interface ScreenerResult {
   haka_ratio: number;
   volatility: number;
   consistency: number;
+  price: number; // current price in IDR
   reason: string;
   recommendation: string;
 }
+
+export const filterByPrice = (
+  results: ScreenerResult[],
+  range: { min: number; max: number }
+) => {
+  return results.filter((r) => r.price >= range.min && r.price <= range.max);
+};
 
 export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' }) => {
   const [results, setResults] = useState<ScreenerResult[]>([]);
@@ -33,6 +41,9 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
         const stocks = ['BBCA', 'TLKM', 'GOTO', 'BBNI', 'ASII', 'BMRI', 'INDF', 'UNTR'];
 
         for (const stock of stocks) {
+          // assign a mock price between 50 and 1500 IDR
+          const price = Math.floor(50 + Math.random() * 1450);
+
           if (selectedMode === 'DAYTRADE') {
             // High volatility, high HAKA ratio
             mockResults.push({
@@ -41,6 +52,7 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
               haka_ratio: Math.random() * 60 + 40,
               volatility: Math.random() * 4 + 2,
               consistency: Math.random() * 50,
+              price,
               reason: '📈 High volatility + Strong HAKA dominance',
               recommendation: 'SCALPING - Entry on HAKA surge'
             });
@@ -52,16 +64,20 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
               haka_ratio: Math.random() * 40 + 30,
               volatility: Math.random() * 2 + 0.5,
               consistency: Math.random() * 100,
+              price,
               reason: '🐋 Whale accumulation + Broker consistency',
               recommendation: 'SWING - Hold 2-5 days'
             });
           }
         }
 
-        // Sort by signal score
-        mockResults.sort((a, b) => b.signal_score - a.signal_score);
+        // apply price range filter before sorting
+        const filteredByPrice = filterByPrice(mockResults, priceRange);
 
-        setResults(mockResults.slice(0, 10));
+        // Sort by signal score
+        filteredByPrice.sort((a, b) => b.signal_score - a.signal_score);
+
+        setResults(filteredByPrice.slice(0, 10));
       } catch (err) {
         console.error('Screener error:', err);
         setError(err instanceof Error ? err.message : 'Unknown error');

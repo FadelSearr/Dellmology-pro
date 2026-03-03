@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BarChart3, TrendingDown, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { StatusBadge } from '@/components/common/StatusBadge';
@@ -9,9 +9,8 @@ import { FlowEngine } from '@/components/dashboard/FlowEngine';
 
 interface Section2Props {
   symbol: string;
-  brokerData?: any[];
-  isLoading?: boolean;
 }
+
 
 /**
  * Section 2: The Flow Engine (Bandarmology Hub)
@@ -23,11 +22,42 @@ interface Section2Props {
  */
 export const Section2_BrokerFlow: React.FC<Section2Props> = ({
   symbol,
-  brokerData = [],
-  isLoading = false,
 }) => {
   const [filterType, setFilterType] = useState<'ALL' | 'SMART_MONEY' | 'WHALE' | 'RETAIL'>('ALL');
   const [timelineType, setTimelineType] = useState<'1D' | '7D' | '14D' | '21D'>('7D');
+  const [brokerData, setBrokerData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const daysForTimeline = (t: string) => {
+    switch (t) {
+      case '1D': return 1;
+      case '7D': return 7;
+      case '14D': return 14;
+      case '21D': return 21;
+      default: return 7;
+    }
+  };
+
+  // fetch broker flow whenever relevant params change
+  useEffect(() => {
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const resp = await fetch(`/api/broker-flow?symbol=${encodeURIComponent(symbol)}&days=${daysForTimeline(timelineType)}&filter=${
+          filterType === 'ALL' ? 'mix' : filterType.toLowerCase()
+        }`);
+        if (resp.ok) {
+          const json = await resp.json();
+          setBrokerData(json.brokers || []);
+        }
+      } catch (err) {
+        console.error('broker flow fetch error', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    if (symbol) load();
+  }, [symbol, timelineType, filterType]);
 
   return (
     <div className="space-y-4">

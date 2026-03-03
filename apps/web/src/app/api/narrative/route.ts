@@ -47,6 +47,23 @@ export async function POST(request: Request) {
  * In production, this would call a Python service via subprocess or API
  */
 async function generateNarrative(type: string, data: any, symbol?: string): Promise<string> {
+  // Basic defensives: if the payload is missing any useful information,
+  // return a generic message rather than letting downstream logic blow up.
+  if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+    switch (type) {
+      case 'broker':
+        return `📊 Narasi Aliran Broker: tidak ada data tersedia.`;
+      case 'regime':
+        return `🔍 Narasi Regime Pasar: tidak ada data tersedia.`;
+      case 'screener':
+        return `🤖 Narasi Screener: tidak ada data tersedia.`;
+      case 'swot':
+        return `💼 Narasi SWOT: tidak ada data tersedia.`;
+      default:
+        return 'Jenis narasi tidak dikenali.';
+    }
+  }
+
   // Mock narratives for now - in production, would call Python service
   
   switch (type) {

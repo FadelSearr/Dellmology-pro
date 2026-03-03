@@ -171,10 +171,10 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
               <div className="text-2xl font-bold text-green-400">{data.stats.retail}</div>
             </div>
 
-            <div className={`bg-linear-to-br ${data.stats.wash_sale_score > 60 ? 'from-red-900/40 to-red-900/20 border border-red-700/50' : 'from-orange-900/40 to-orange-900/20 border border-orange-700/50'} rounded-lg p-4`}>
+            <div className={`bg-linear-to-br ${((data.stats?.wash_sale_score||0) > 60 ? 'from-red-900/40 to-red-900/20 border border-red-700/50' : 'from-orange-900/40 to-orange-900/20 border border-orange-700/50')} rounded-lg p-4`}>
               <div className="text-xs text-gray-400 mb-2">⚠️ Wash Sale</div>
-              <div className={`text-2xl font-bold ${data.stats.wash_sale_score > 60 ? 'text-red-400' : 'text-orange-400'}`}>
-                {data.stats.wash_sale_score.toFixed(0)}%
+              <div className={`text-2xl font-bold ${((data.stats?.wash_sale_score||0) > 60 ? 'text-red-400' : 'text-orange-400')}`}>
+                {(data.stats?.wash_sale_score ?? 0).toFixed(0)}%
               </div>
             </div>
           </div>
@@ -225,8 +225,8 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
                           <div className="text-xs text-gray-400">
                             {broker.is_whale && '🐋 Whale • '}
                             {broker.is_retail && '👥 Retail • '}
-                            Z-Score: {broker.z_score.toFixed(2)} • 
-                            {' '}Consistency: {broker.consistency_score.toFixed(0)}%
+                            Z-Score: {((broker.z_score?? 0).toFixed(2))} • 
+                            {' '}Consistency: {((broker.consistency_score ?? 0).toFixed(0))}%
                           </div>
                         </div>
                       </div>

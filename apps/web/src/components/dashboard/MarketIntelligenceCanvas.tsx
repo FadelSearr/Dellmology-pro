@@ -83,6 +83,32 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
     return () => { clearInterval(interval); clearInterval(interval2); };
   }, [symbol, timeframe]);
 
+  useEffect(() => {
+    const score = data?.unified_power_score?.score;
+    if (score === undefined || score === null) return;
+
+    let signal: string | null = null;
+    if (score >= 85) signal = 'STRONG_BUY';
+    else if (score <= 30) signal = 'STRONG_SELL';
+
+    if (!signal) return;
+
+    fetch('/api/telegram-alert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'trading',
+        symbol,
+        data: {
+          signal,
+          price: 0,
+          reason: `UPS score ${score}`,
+          confidence: score,
+        },
+      }),
+    }).catch((e) => console.error('Telegram alert failed', e));
+  }, [data, symbol]);
+
   if (loading) {
     return (
       <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-6 animate-pulse">
@@ -107,32 +133,6 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
   const hakaRatio = metrics.haka_ratio || 0;
   const pressure = metrics.pressure_index || 0;
 
-  // send telegram alert when UPS threshold crossed
-  useEffect(() => {
-    if (!data) return;
-    const score = ups.score;
-    let signal: string | null = null;
-    if (score >= 85) signal = 'STRONG_BUY';
-    else if (score <= 30) signal = 'STRONG_SELL';
-
-    if (signal) {
-      // call backend alert endpoint
-      fetch('/api/telegram-alert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'trading',
-          symbol,
-          data: {
-            signal,
-            price: 0, // price not available here
-            reason: `UPS score ${score}`,
-            confidence: score,
-          },
-        }),
-      }).catch((e) => console.error('Telegram alert failed', e));
-    }
-  }, [data, symbol, ups.score]);
   // Determine UPS color based on score
   const getUPSColor = (score: number) => {
     if (score > 70) return 'text-green-500 bg-green-500/10';

@@ -74,6 +74,30 @@ export const Section1_MarketIntelligence: React.FC<Section1Props> = ({
         </div>
       </div>
 
+      {/* Signal Rail */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="p-4 rounded-lg border border-gray-700 bg-linear-to-br from-gray-800/70 to-gray-900/70">
+          <div className="text-xs text-gray-400 mb-1">Whale Pressure</div>
+          <div className="text-xl font-semibold text-cyan-400">Accumulating</div>
+          <div className="text-xs text-gray-500">Net buy climbing vs 7D baseline</div>
+        </div>
+        <div className="p-4 rounded-lg border border-gray-700 bg-linear-to-br from-gray-800/70 to-gray-900/70">
+          <div className="text-xs text-gray-400 mb-1">Pattern Lens</div>
+          <div className="text-xl font-semibold text-green-400">Double Bottom</div>
+          <div className="text-xs text-gray-500">CNN confidence 0.86 • fresh</div>
+        </div>
+        <div className="p-4 rounded-lg border border-gray-700 bg-linear-to-br from-gray-800/70 to-gray-900/70">
+          <div className="text-xs text-gray-400 mb-1">Risk Regime</div>
+          <div className="text-xl font-semibold text-yellow-400">High Vol</div>
+          <div className="text-xs text-gray-500">ATR expanding, tighten stops</div>
+        </div>
+        <div className="p-4 rounded-lg border border-gray-700 bg-linear-to-br from-gray-800/70 to-gray-900/70">
+          <div className="text-xs text-gray-400 mb-1">AI Narrative</div>
+          <div className="text-xl font-semibold text-purple-400">Caution</div>
+          <div className="text-xs text-gray-500">Waiting for bullish follow-through</div>
+        </div>
+      </div>
+
       {/* Chart Area */}
       <Card className="space-y-4">
         <div className="h-96 bg-gray-900/50 rounded border border-gray-700 flex items-center justify-center">
