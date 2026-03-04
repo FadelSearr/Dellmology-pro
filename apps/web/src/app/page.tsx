@@ -1449,6 +1449,8 @@ function LeftSidebar({
   onWatchlistUpdate: (items: WatchlistItem[]) => void;
 }) {
   const [activeTab, setActiveTab] = useState<'day' | 'swing' | 'custom'>('day');
+  const [customMinPrice, setCustomMinPrice] = useState('100');
+  const [customMaxPrice, setCustomMaxPrice] = useState('500');
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(FALLBACK_WATCHLIST);
   const [screenerLoading, setScreenerLoading] = useState(false);
 
@@ -1469,12 +1471,17 @@ function LeftSidebar({
     const fetchScreener = async () => {
       setScreenerLoading(true);
       try {
+        const parsedMin = Math.max(1, Number(customMinPrice) || 100);
+        const parsedMaxRaw = Math.max(1, Number(customMaxPrice) || 500);
+        const customMin = Math.min(parsedMin, parsedMaxRaw);
+        const customMax = Math.max(parsedMin, parsedMaxRaw);
+
         const endpoint =
           activeTab === 'day'
             ? '/api/screener/daytrade?minutes=30&limit=12&min_trades=20'
             : activeTab === 'swing'
               ? '/api/screener/swing?days=7&limit=12'
-              : '/api/screener/custom?min_price=100&max_price=500&days=7&minutes=30&limit=12';
+              : `/api/screener/custom?min_price=${customMin}&max_price=${customMax}&days=7&minutes=30&limit=12`;
 
         const response = await fetch(endpoint);
         const payload = response.ok ? ((await response.json()) as { data?: Array<Record<string, unknown>>; success?: boolean }) : null;
@@ -1523,7 +1530,7 @@ function LeftSidebar({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, activeSymbol, currentPrice, priceChangePct]);
+  }, [activeTab, activeSymbol, currentPrice, priceChangePct, customMinPrice, customMaxPrice]);
 
   useEffect(() => {
     onWatchlistUpdate(watchlist);
@@ -1557,9 +1564,33 @@ function LeftSidebar({
         <div className="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2 rounded border border-slate-800/50">
           {activeTab === 'day' && 'Detecting high volatility & HAKA dominance > 65%.'}
           {activeTab === 'swing' && 'Scanning consistent accumulation & chart patterns.'}
-          {activeTab === 'custom' && 'Custom filter active: Price 100-500 + mixed flow score.'}
+          {activeTab === 'custom' && `Custom filter active: Price ${Math.max(1, Number(customMinPrice) || 100)}-${Math.max(1, Number(customMaxPrice) || 500)} + mixed flow score.`}
           {screenerLoading ? ' Refreshing screener...' : ''}
         </div>
+        {activeTab === 'custom' ? (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={customMinPrice}
+              disabled={coolingOffActive}
+              onChange={(event) => setCustomMinPrice(event.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 text-slate-300 text-[10px] font-mono px-2 py-1 rounded focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 outline-none disabled:opacity-50"
+              placeholder="Min"
+            />
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={customMaxPrice}
+              disabled={coolingOffActive}
+              onChange={(event) => setCustomMaxPrice(event.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 text-slate-300 text-[10px] font-mono px-2 py-1 rounded focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 outline-none disabled:opacity-50"
+              placeholder="Max"
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar">
