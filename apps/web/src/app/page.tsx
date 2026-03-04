@@ -2209,6 +2209,15 @@ function CenterPanel({
   const confidenceDown = Number(prediction?.data?.confidence_down || 0);
   const cnnDirection = prediction?.data?.prediction || (confidenceUp >= confidenceDown ? 'UP' : 'DOWN');
   const cnnConfidence = Math.max(confidenceUp, confidenceDown);
+  const upsZoneLabel = upsScore >= 80 ? 'STRONG BUY' : upsScore >= 60 ? 'BUY BIAS' : upsScore >= 40 ? 'NEUTRAL' : upsScore >= 20 ? 'SELL BIAS' : 'STRONG SELL';
+  const upsZoneTone =
+    upsScore >= 80
+      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+      : upsScore >= 60
+        ? 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10'
+        : upsScore >= 40
+          ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+          : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
   const technicalLabel =
     cnnConfidence < 55
       ? 'Range Compression'
@@ -2328,10 +2337,25 @@ function CenterPanel({
                 <div className="text-[9px] text-rose-200 font-mono mb-2 uppercase">High Volatility Mode</div>
                 <div className="mb-3 flex items-end justify-between border border-slate-700/60 bg-slate-900/60 rounded px-3 py-2">
                   <div className="text-[10px] text-slate-400 uppercase tracking-wider">UPS</div>
-                  <div className="font-black text-white tracking-tighter text-6xl leading-none">
+                  <div className="font-black text-white tracking-tighter text-7xl leading-none">
                     {Math.round(upsScore)}<span className="text-xl text-slate-500">/100</span>
                   </div>
                   <div className={cn('text-[10px] font-bold uppercase', upsScore >= 50 ? 'text-emerald-300' : 'text-rose-300')}>{combatAction}</div>
+                </div>
+                <div className="mb-3 border border-slate-700/60 bg-slate-900/60 rounded px-3 py-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[9px] text-slate-500 uppercase tracking-wider">UPS Confluence</div>
+                    <div className={cn('text-[9px] font-bold uppercase border rounded px-2 py-0.5', upsZoneTone)}>{upsZoneLabel}</div>
+                  </div>
+                  <div className="relative h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="absolute inset-0 bg-linear-to-r from-rose-600 via-amber-500 to-emerald-500 opacity-80" />
+                    <div className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white]" style={{ left: `${Math.max(0, Math.min(100, upsScore))}%` }} />
+                  </div>
+                  <div className="flex justify-between text-[8px] text-slate-500 uppercase font-bold">
+                    <span>Sell</span>
+                    <span>Neutral</span>
+                    <span>Buy</span>
+                  </div>
                 </div>
                 <ul className="grid grid-cols-3 gap-2 text-[10px] font-bold uppercase">
                   {combatMode.bullets.map((bullet) => (
