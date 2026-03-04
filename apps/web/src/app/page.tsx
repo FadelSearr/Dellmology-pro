@@ -1124,6 +1124,32 @@ function buildCombatBullets(consensus: ModelConsensus, coolingActive: boolean): 
   return ['WHALE EXIT ALERT', 'REDUCE RISK FAST', 'NO FOMO ENTRY'];
 }
 
+function buildActiveLockGuards(params: {
+  coolingOffActive: boolean;
+  coolingRemainingLabel: string;
+  deploymentGateBlocked: boolean;
+  riskConfigLocked: boolean;
+  systemKillSwitchActive: boolean;
+  engineOffline: boolean;
+  engineHeartbeatTimeoutSeconds: number;
+  killSwitchActive: boolean;
+  ihsgChangePct: number;
+  modelConsensusPass: boolean;
+  dataSanityWarning: boolean;
+  dataSanityLockActive: boolean;
+}) {
+  return [
+    params.coolingOffActive ? `Cooling-off ${params.coolingRemainingLabel}` : null,
+    params.deploymentGateBlocked ? 'Deployment gate blocked' : null,
+    params.riskConfigLocked ? 'Runtime risk config locked' : null,
+    params.systemKillSwitchActive ? 'Cloud kill-switch active' : null,
+    params.engineOffline ? `Engine offline >${params.engineHeartbeatTimeoutSeconds}s` : null,
+    params.killSwitchActive ? `Market kill-switch ${params.ihsgChangePct.toFixed(2)}%` : null,
+    !params.modelConsensusPass ? 'Model consensus confusion' : null,
+    params.dataSanityWarning || params.dataSanityLockActive ? 'Data sanity warning/lock' : null,
+  ].filter((value): value is string => value !== null);
+}
+
 function StatusDot({ status, label }: { status: Tone; label: string }) {
   return (
     <div className="flex items-center space-x-2 text-[10px] text-slate-400 font-mono">
@@ -1312,16 +1338,20 @@ function TopNavigation({
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
   const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
-  const activeLockGuards = [
-    coolingOff.active ? `Cooling-off ${coolingRemainingLabel}` : null,
-    deploymentGate.blocked ? 'Deployment gate blocked' : null,
-    riskConfigLocked ? 'Runtime risk config locked' : null,
-    systemKillSwitch.active ? 'Cloud kill-switch active' : null,
-    engineOffline ? `Engine offline >${engineHeartbeat.timeoutSeconds}s` : null,
-    killSwitchActive ? `Market kill-switch ${ihsgChangePct.toFixed(2)}%` : null,
-    !modelConsensus.pass ? 'Model consensus confusion' : null,
-    dataSanity.warning || dataSanity.lockActive ? 'Data sanity warning/lock' : null,
-  ].filter((value): value is string => value !== null);
+  const activeLockGuards = buildActiveLockGuards({
+    coolingOffActive: coolingOff.active,
+    coolingRemainingLabel,
+    deploymentGateBlocked: deploymentGate.blocked,
+    riskConfigLocked,
+    systemKillSwitchActive: systemKillSwitch.active,
+    engineOffline,
+    engineHeartbeatTimeoutSeconds: engineHeartbeat.timeoutSeconds,
+    killSwitchActive,
+    ihsgChangePct,
+    modelConsensusPass: modelConsensus.pass,
+    dataSanityWarning: dataSanity.warning,
+    dataSanityLockActive: dataSanity.lockActive,
+  });
   const lockGuardTone =
     activeLockGuards.length > 0
       ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
@@ -6330,15 +6360,20 @@ export default function Home() {
   const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
   const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
   const coolingLastBreachLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
-  const combatCriticalLocks = [
-    coolingOff.active ? `COOL ${coolingRemainingLabel}` : null,
-    engineHeartbeat.checkedAt !== null && !engineHeartbeat.online ? 'ENGINE OFFLINE' : null,
-    deploymentGate.blocked ? 'DEPLOY BLOCK' : null,
-    !modelConsensus.pass ? 'VOTE CONFUSE' : null,
-    systemKillSwitch.active ? 'SYS KILL' : null,
-    dataSanity.warning ? 'DATA WARN' : null,
-    riskConfigLocked ? 'RISKCFG LOCK' : null,
-  ].filter((value): value is string => value !== null);
+  const combatCriticalLocks = buildActiveLockGuards({
+    coolingOffActive: coolingOff.active,
+    coolingRemainingLabel,
+    deploymentGateBlocked: deploymentGate.blocked,
+    riskConfigLocked,
+    systemKillSwitchActive: systemKillSwitch.active,
+    engineOffline: engineHeartbeat.checkedAt !== null && !engineHeartbeat.online,
+    engineHeartbeatTimeoutSeconds: engineHeartbeat.timeoutSeconds,
+    killSwitchActive,
+    ihsgChangePct,
+    modelConsensusPass: modelConsensus.pass,
+    dataSanityWarning: dataSanity.warning,
+    dataSanityLockActive: dataSanity.lockActive,
+  });
   const combatRiskTone =
     combatCriticalLocks.length > 0
       ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
@@ -6557,7 +6592,7 @@ export default function Home() {
         >
           <span>
             {combatCriticalLocks.length > 0
-              ? `COMBAT RISK STRIP | ${combatCriticalLocks.join(' | ')}`
+              ? `COMBAT RISK STRIP | LOCKS ${combatCriticalLocks.length} | ${combatCriticalLocks.join(' | ')}`
               : 'COMBAT RISK STRIP | ALL CORE GUARDS NORMAL'}
           </span>
           <span className="text-slate-500">{`UPS ${Math.round(upsScore)} | ${activeSymbol} | RESEARCH ONLY`}</span>
