@@ -894,6 +894,7 @@ function TopNavigation({
   confidenceTracking,
   championChallenger,
   newsImpact,
+  mtfValidation,
   infraStatus,
   globalData,
 }: {
@@ -914,6 +915,7 @@ function TopNavigation({
   confidenceTracking: ModelConfidenceTracking;
   championChallenger: ChampionChallengerState;
   newsImpact: NewsImpactState;
+  mtfValidation: MultiTimeframeValidationState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1075,6 +1077,15 @@ function TopNavigation({
           title={newsImpact.divergenceReason || `Retail ${newsImpact.retailSentimentScore.toFixed(1)} | Whale ${newsImpact.whaleFlowBias.toFixed(1)}`}
         >
           {`DIVERGE ${newsImpact.divergenceWarning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            mtfValidation.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={mtfValidation.reason || `${mtfValidation.shortTimeframe}:${mtfValidation.shortVote} vs ${mtfValidation.highTimeframe}:${mtfValidation.highVote}`}
+        >
+          {`MTF ${mtfValidation.warning ? 'CONFLICT' : 'ALIGNED'}`}
         </div>
         <div
           className={cn(
@@ -5078,6 +5089,7 @@ export default function Home() {
         confidenceTracking={confidenceTracking}
         championChallenger={championChallenger}
         newsImpact={newsImpact}
+        mtfValidation={mtfValidation}
         infraStatus={infraStatus}
         globalData={globalData}
       />
