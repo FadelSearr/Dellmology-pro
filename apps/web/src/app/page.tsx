@@ -901,6 +901,7 @@ function TopNavigation({
   spoofing,
   washSaleRisk,
   icebergRisk,
+  exitWhale,
   goldenRecord,
   marketIntelAdapter,
   infraStatus,
@@ -930,6 +931,7 @@ function TopNavigation({
   spoofing: SpoofingAlertState;
   washSaleRisk: WashSaleRiskState;
   icebergRisk: IcebergRiskState;
+  exitWhale: ExitWhaleRiskState;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
@@ -1149,6 +1151,15 @@ function TopNavigation({
           title={icebergRisk.reason || `Score ${icebergRisk.score.toFixed(0)} | ${icebergRisk.riskLevel} | Absorb ${icebergRisk.absorptionClusters}`}
         >
           {`ICEBERG ${icebergRisk.warning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            exitWhale.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={exitWhale.reason || `Signal ${exitWhale.signal} (${exitWhale.confidence.toFixed(0)}) | Events ${exitWhale.strongEventCount}/${exitWhale.eventCount}`}
+        >
+          {`EXIT ${exitWhale.warning ? 'WARN' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5177,6 +5188,7 @@ export default function Home() {
         spoofing={spoofingAlert}
         washSaleRisk={washSaleRisk}
         icebergRisk={icebergRisk}
+        exitWhale={exitWhaleRisk}
         goldenRecord={goldenRecordValidation}
         marketIntelAdapter={marketIntelAdapter}
         infraStatus={infraStatus}
