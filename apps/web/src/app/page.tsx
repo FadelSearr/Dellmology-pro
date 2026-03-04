@@ -1290,6 +1290,13 @@ function TopNavigation({
       : null;
   const endpointPrimaryLatencies = sourceHealth.map((item) => (typeof item.primaryLatencyMs === 'number' ? item.primaryLatencyMs : null)).filter((value): value is number => value !== null);
   const maxEndpointPrimaryLatency = endpointPrimaryLatencies.length > 0 ? Math.max(...endpointPrimaryLatencies) : null;
+  const engineOffline = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
+  const fallbackEmergencyActive = engineOffline && (marketIntelAdapter.degraded || degradedEndpointCount > 0);
+  const fallbackStatusTone = fallbackEmergencyActive
+    ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+    : fallbackEndpointCount > 0 || marketIntelAdapter.degraded
+      ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+      : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
   const infraCoreStatuses: Tone[] = [infraStatus.sse, infraStatus.db, infraStatus.integrity];
   const infraCoreHealthyCount = infraCoreStatuses.filter((status) => status === 'good').length;
   const infraCoreIssueCount = infraCoreStatuses.length - infraCoreHealthyCount;
@@ -1688,6 +1695,12 @@ function TopNavigation({
           title={degradedSources.length > 0 ? degradedSources.join(' | ') : 'All adapters healthy'}
         >
           {`SOURCES ${degradedSources.length > 0 ? `DEG ${degradedSources.length}` : 'OK'}`}
+        </div>
+        <div
+          className={cn('text-[10px] font-mono border rounded px-2 py-1', fallbackStatusTone)}
+          title={`Engine ${engineOffline ? 'OFFLINE' : 'ONLINE'} | Endpoint degraded ${degradedEndpointCount}/${sourceHealth.length} | Fallback ${fallbackEndpointCount}${maxFallbackDelayMinutes !== null ? ` | max delay ${Math.round(maxFallbackDelayMinutes)}m` : ''}`}
+        >
+          {`FALLBACK ${fallbackEmergencyActive ? 'EMERGENCY' : fallbackEndpointCount > 0 || marketIntelAdapter.degraded ? 'ACTIVE' : 'STANDBY'}`}
         </div>
         <div
           className={cn(
@@ -6129,6 +6142,16 @@ export default function Home() {
     }
   }, [activeSymbol, deploymentGate.blocked, fetchDashboard]);
 
+  const fallbackDegradedCount = sourceHealth.filter((item) => item.degraded).length;
+  const fallbackDelayCandidates = sourceHealth
+    .map((item) => (typeof item.fallbackDelayMinutes === 'number' ? item.fallbackDelayMinutes : null))
+    .filter((value): value is number => value !== null);
+  const fallbackMaxDelayMinutes = fallbackDelayCandidates.length > 0 ? Math.max(...fallbackDelayCandidates) : null;
+  const fallbackEmergencyActive =
+    engineHeartbeat.checkedAt !== null &&
+    !engineHeartbeat.online &&
+    (marketIntelAdapter.degraded || degradedSources.length > 0 || fallbackDegradedCount > 0);
+
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
       <TopNavigation
@@ -6207,6 +6230,11 @@ export default function Home() {
           >
             {deadmanResetCooldown > 0 ? `Reset Deadman (${deadmanResetCooldown}s)` : 'Reset Deadman'}
           </button>
+        </div>
+      ) : null}
+      {fallbackEmergencyActive ? (
+        <div className="border-b border-amber-500/40 bg-amber-500/10 px-4 py-1.5 text-[10px] font-mono text-amber-300">
+          {`FALLBACK EMERGENCY MODE | degraded ${fallbackDegradedCount}/${sourceHealth.length} endpoints | source ${marketIntelAdapter.selectedSource} | delay ${fallbackMaxDelayMinutes !== null ? `${Math.round(fallbackMaxDelayMinutes)}m` : '-'} | data may be delayed`}
         </div>
       ) : null}
       <div className="flex-1 flex min-h-0">
