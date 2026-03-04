@@ -7,11 +7,22 @@ interface BuildSignalSnapshotPayloadInput {
   liquidityGuard: LiquidityGuard;
   snapshotSource: string;
   adversarialSource: 'ai' | 'fallback';
+  ruleEngine: {
+    source: string;
+    mode: 'BASELINE' | 'CUSTOM';
+    version: string;
+    configDrift: boolean;
+    ihsgRiskTriggerPct: number;
+    upsMinNormal: number;
+    upsMinRisk: number;
+    participationCapNormalPct: number;
+    participationCapRiskPct: number;
+  };
   nowIso?: string;
 }
 
 export function buildSignalSnapshotPayload(input: BuildSignalSnapshotPayloadInput): Record<string, unknown> {
-  const { alertData, modelConsensus, liquidityGuard, snapshotSource, adversarialSource, nowIso } = input;
+  const { alertData, modelConsensus, liquidityGuard, snapshotSource, adversarialSource, ruleEngine, nowIso } = input;
 
   return {
     ...alertData,
@@ -41,6 +52,19 @@ export function buildSignalSnapshotPayload(input: BuildSignalSnapshotPayloadInpu
         risk_based_lots: liquidityGuard.riskBasedLots,
         impact_pct: liquidityGuard.impactPct,
         high_impact_order: liquidityGuard.highImpactOrder,
+      },
+      rule_engine: {
+        source: ruleEngine.source,
+        mode: ruleEngine.mode,
+        version: ruleEngine.version,
+        config_drift: ruleEngine.configDrift,
+        thresholds: {
+          ihsg_risk_trigger_pct: ruleEngine.ihsgRiskTriggerPct,
+          ups_min_normal: ruleEngine.upsMinNormal,
+          ups_min_risk: ruleEngine.upsMinRisk,
+          participation_cap_normal_pct: ruleEngine.participationCapNormalPct,
+          participation_cap_risk_pct: ruleEngine.participationCapRiskPct,
+        },
       },
     },
   };

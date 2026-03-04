@@ -4179,6 +4179,17 @@ export default function Home() {
               liquidityGuard,
               snapshotSource: 'telegram-alert',
               adversarialSource: adversarialNarrative.source,
+              ruleEngine: {
+                source: runtimeConfigSource,
+                mode: runtimeRuleEngineMode,
+                version: runtimeRuleEngineVersion,
+                configDrift,
+                ihsgRiskTriggerPct: runtimeIhsgDrop,
+                upsMinNormal: runtimeNormalUps,
+                upsMinRisk: runtimeRiskUps,
+                participationCapNormalPct: runtimeParticipationCapNormalPct,
+                participationCapRiskPct: runtimeParticipationCapRiskPct,
+              },
             }),
           }),
         });

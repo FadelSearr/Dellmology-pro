@@ -9,6 +9,17 @@ describe('signalSnapshotPayload', () => {
       },
       snapshotSource: 'telegram-alert',
       adversarialSource: 'ai',
+      ruleEngine: {
+        source: 'runtime-config',
+        mode: 'CUSTOM',
+        version: 're-v2026.03.04-abc123ef',
+        configDrift: true,
+        ihsgRiskTriggerPct: -1.25,
+        upsMinNormal: 70,
+        upsMinRisk: 85,
+        participationCapNormalPct: 0.01,
+        participationCapRiskPct: 0.005,
+      },
       nowIso: '2026-03-04T10:00:00.000Z',
       modelConsensus: {
         technical: 'BUY',
@@ -54,5 +65,18 @@ describe('signalSnapshotPayload', () => {
     expect(liquidity.participation_gate).toBe('ACTIVE');
     expect(liquidity.participation_cap_binding).toBe(true);
     expect(liquidity.active_cap).toBe('LIQUIDITY');
+
+    const ruleEngine = context.rule_engine as Record<string, unknown>;
+    expect(ruleEngine.source).toBe('runtime-config');
+    expect(ruleEngine.mode).toBe('CUSTOM');
+    expect(ruleEngine.version).toBe('re-v2026.03.04-abc123ef');
+    expect(ruleEngine.config_drift).toBe(true);
+
+    const thresholds = ruleEngine.thresholds as Record<string, unknown>;
+    expect(thresholds.ihsg_risk_trigger_pct).toBe(-1.25);
+    expect(thresholds.ups_min_normal).toBe(70);
+    expect(thresholds.ups_min_risk).toBe(85);
+    expect(thresholds.participation_cap_normal_pct).toBe(0.01);
+    expect(thresholds.participation_cap_risk_pct).toBe(0.005);
   });
 });
