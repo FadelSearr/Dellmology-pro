@@ -28,6 +28,7 @@ const (
 	tokenAPIURL         = "http://localhost:3000/api/session"
 	websocketURL        = "wss://stream.stockbit.com/stream"
 	systemControlAPIURL = "http://localhost:3000/api/system-control"
+	workerResetAPIURL   = "http://localhost:3000/api/system-control/worker-reset"
 	databaseURL         = "postgresql://admin:password@localhost:5433/dellmology?sslmode=disable"
 	httpListenAddr      = ":8080"
 	workerHeartbeatAPIURL = "http://localhost:3000/api/worker-heartbeat"
@@ -55,6 +56,11 @@ type TokenResponse struct {
 
 type SystemControlResponse struct {
 	IsSystemActive bool `json:"is_system_active"`
+}
+
+type WorkerResetResponse struct {
+	ResetRequested bool   `json:"reset_requested"`
+	Reason         string `json:"reason"`
 }
 type WebSocketMessage struct {
 	Type string          `json:"t"`
@@ -360,8 +366,22 @@ func runStreamer() {
 	if systemControlURL == "" {
 		systemControlURL = systemControlAPIURL
 	}
+	workerResetURL := strings.TrimSpace(os.Getenv("WORKER_RESET_URL"))
+	if workerResetURL == "" {
+		workerResetURL = workerResetAPIURL
+	}
 
 	for {
+		resetRequested, resetReason, err := fetchWorkerResetState(workerResetURL)
+		if err != nil {
+			log.Printf("WARN: worker-reset check failed (%v)", err)
+		} else if resetRequested {
+			log.Printf("WARN: Cloud hard-reset requested before connect: %s", resetReason)
+			_ = acknowledgeWorkerReset(workerResetURL, "streamer-go")
+			time.Sleep(reconnectMinWait)
+			continue
+		}
+
 		active, err := fetchSystemActive(systemControlURL)
 		if err != nil {
 			log.Printf("WARN: system-control check failed (%v), continue with existing state", err)
@@ -408,7 +428,7 @@ func runStreamer() {
 
 		log.Println("Successfully connected to WebSocket. Listening for messages...")
 		monitorStop := make(chan struct{})
-		go monitorSystemControlLoop(conn, systemControlURL, monitorStop)
+		go monitorSystemControlLoop(conn, systemControlURL, workerResetURL, monitorStop)
 		messageLoop(conn)
 		close(monitorStop)
 		
@@ -419,7 +439,7 @@ func runStreamer() {
 	}
 }
 
-func monitorSystemControlLoop(conn *websocket.Conn, systemControlURL string, stop <-chan struct{}) {
+func monitorSystemControlLoop(conn *websocket.Conn, systemControlURL string, workerResetURL string, stop <-chan struct{}) {
 	ticker := time.NewTicker(systemControlPollInterval)
 	defer ticker.Stop()
 
@@ -428,6 +448,16 @@ func monitorSystemControlLoop(conn *websocket.Conn, systemControlURL string, sto
 		case <-stop:
 			return
 		case <-ticker.C:
+			resetRequested, resetReason, err := fetchWorkerResetState(workerResetURL)
+			if err != nil {
+				log.Printf("WARN: worker-reset monitor failed: %v", err)
+			} else if resetRequested {
+				log.Printf("WARN: Cloud hard-reset requested: %s. Closing websocket session.", resetReason)
+				_ = acknowledgeWorkerReset(workerResetURL, "streamer-go")
+				_ = conn.Close()
+				return
+			}
+
 			active, err := fetchSystemActive(systemControlURL)
 			if err != nil {
 				log.Printf("WARN: system-control monitor failed: %v", err)
@@ -440,6 +470,62 @@ func monitorSystemControlLoop(conn *websocket.Conn, systemControlURL string, sto
 			}
 		}
 	}
+}
+
+func fetchWorkerResetState(workerResetURL string) (bool, string, error) {
+	client := &http.Client{Timeout: systemControlTimeout}
+	response, err := client.Get(workerResetURL)
+	if err != nil {
+		return false, "", err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return false, "", fmt.Errorf("worker-reset status %d", response.StatusCode)
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return false, "", err
+	}
+
+	var payload WorkerResetResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false, "", err
+	}
+
+	return payload.ResetRequested, payload.Reason, nil
+}
+
+func acknowledgeWorkerReset(workerResetURL string, source string) error {
+	client := &http.Client{Timeout: systemControlTimeout}
+	payload := map[string]string{
+		"action": "acknowledge",
+		"source": source,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	request, err := http.NewRequest(http.MethodPost, workerResetURL, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("worker-reset acknowledge status %d", response.StatusCode)
+	}
+
+	return nil
 }
 
 func fetchSystemActive(systemControlURL string) (bool, error) {
