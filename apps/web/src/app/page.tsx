@@ -569,6 +569,23 @@ function parsePercentLabel(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function coolingTriggerFromReason(reason: string | null, active: boolean) {
+  const coolingReasonText = (reason || '').toLowerCase();
+  if (coolingReasonText.includes('portfolio-beta-guard') || coolingReasonText.includes('portfolio beta')) {
+    return 'PORTFOLIO_BETA_STREAK' as const;
+  }
+  if (coolingReasonText.includes('backtest-rig') || coolingReasonText.includes('drawdown')) {
+    return 'DRAWDOWN_BREACH' as const;
+  }
+  if (coolingReasonText.includes('manual reset')) {
+    return 'MANUAL' as const;
+  }
+  if (active) {
+    return 'SYSTEM_GUARD' as const;
+  }
+  return 'NONE' as const;
+}
+
 function apiTimeframe(tf: Timeframe) {
   if (tf === '15m') return '15m';
   if (tf === '1h') return '1h';
@@ -1735,16 +1752,7 @@ function BottomPanel({
 }) {
   const label = confidence?.confidence_label || 'MEDIUM';
   const accuracy = Number(confidence?.accuracy_pct || 0);
-  const coolingReasonText = (coolingOff.reason || '').toLowerCase();
-  const coolingTriggerLabel = coolingReasonText.includes('portfolio-beta-guard') || coolingReasonText.includes('portfolio beta')
-    ? 'PORTFOLIO_BETA_STREAK'
-    : coolingReasonText.includes('backtest-rig') || coolingReasonText.includes('drawdown')
-      ? 'DRAWDOWN_BREACH'
-      : coolingReasonText.includes('manual reset')
-        ? 'MANUAL'
-        : coolingOff.active
-          ? 'SYSTEM_GUARD'
-          : 'NONE';
+  const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
 
   return (
     <Card className="h-48 border-t border-slate-800 rounded-none shrink-0 flex flex-row">
@@ -3706,6 +3714,7 @@ export default function Home() {
     }
 
     setActionState({ busy: true, message: 'Sending Telegram alert...' });
+    const coolingTrigger = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
     const alertData = {
       ups_score: Math.round(upsScore),
       signal: signalLabel(upsScore, minUpsForLong).toUpperCase(),
@@ -3719,6 +3728,13 @@ export default function Home() {
       system_control: {
         is_system_active: !systemKillSwitch.active,
         reason: systemKillSwitch.reason,
+      },
+      cooling_off: {
+        active: coolingOff.active,
+        trigger: coolingTrigger,
+        reason: coolingOff.reason,
+        breach_streak: coolingOff.breachStreak,
+        remaining_seconds: coolingOff.remainingSeconds,
       },
       source_health: {
         market_intel: {
@@ -3961,6 +3977,9 @@ export default function Home() {
     timeframe,
     upsScore,
     coolingOff.active,
+    coolingOff.reason,
+    coolingOff.breachStreak,
+    coolingOff.remainingSeconds,
     modelConsensus.bandarmology,
     modelConsensus.message,
     modelConsensus.pass,
