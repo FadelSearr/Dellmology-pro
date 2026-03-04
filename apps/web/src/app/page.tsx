@@ -927,6 +927,7 @@ function TopNavigation({
   sourceHealth,
   degradedSources,
   tokenTelemetry,
+  deadmanResetCooldown,
   infraStatus,
   globalData,
 }: {
@@ -980,6 +981,7 @@ function TopNavigation({
   sourceHealth: EndpointSourceHealthState[];
   degradedSources: string[];
   tokenTelemetry: TokenTelemetry;
+  deadmanResetCooldown: number;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1394,6 +1396,15 @@ function TopNavigation({
           title={`Status ${tokenTelemetry.status.toUpperCase()} | ${tokenTelemetry.syncReason || 'unknown'} | jitter ${tokenTelemetry.jitterMs ?? 0}ms | refresh# ${tokenTelemetry.forcedRefreshCount ?? 0} | seen ${tokenTelemetry.extensionLastSeenSeconds ?? '-'}s`}
         >
           {`TOKEN ${tokenTelemetry.status.toUpperCase()}${tokenTelemetry.deadmanTriggered ? ' DEADMAN' : ''}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            deadmanResetCooldown > 0 ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={deadmanResetCooldown > 0 ? `Reset endpoint rate-limited, retry in ${deadmanResetCooldown}s` : 'No active API rate-limit cooldown'}
+        >
+          {`RLIMIT ${deadmanResetCooldown > 0 ? `${deadmanResetCooldown}s` : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5461,6 +5472,7 @@ export default function Home() {
         sourceHealth={sourceHealth}
         degradedSources={degradedSources}
         tokenTelemetry={tokenTelemetry}
+        deadmanResetCooldown={deadmanResetCooldown}
         infraStatus={infraStatus}
         globalData={globalData}
       />
