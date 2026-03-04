@@ -898,6 +898,7 @@ function TopNavigation({
   systemicRisk,
   portfolioBetaRisk,
   artificialLiquidity,
+  spoofing,
   goldenRecord,
   marketIntelAdapter,
   infraStatus,
@@ -924,6 +925,7 @@ function TopNavigation({
   systemicRisk: SystemicRisk;
   portfolioBetaRisk: PortfolioBetaRisk;
   artificialLiquidity: ArtificialLiquidityState;
+  spoofing: SpoofingAlertState;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
@@ -1116,6 +1118,15 @@ function TopNavigation({
           title={artificialLiquidity.reason || `TopShare ${artificialLiquidity.topBuyerSharePct.toFixed(1)}% | CR ${artificialLiquidity.concentrationRatio.toFixed(2)} | Support ${artificialLiquidity.supportingBuyers}`}
         >
           {`LIQUIDITY ${artificialLiquidity.warning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            spoofing.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={spoofing.reason || `Vanish ${spoofing.vanishedWalls} | Lifetime ${spoofing.avgLifetimeSeconds.toFixed(0)}s`}
+        >
+          {`SPOOF ${spoofing.warning ? 'WARN' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5141,6 +5152,7 @@ export default function Home() {
         systemicRisk={systemicRisk}
         portfolioBetaRisk={portfolioBetaRisk}
         artificialLiquidity={artificialLiquidity}
+        spoofing={spoofingAlert}
         goldenRecord={goldenRecordValidation}
         marketIntelAdapter={marketIntelAdapter}
         infraStatus={infraStatus}
