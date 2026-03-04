@@ -1879,6 +1879,13 @@ function LeftSidebar({
       });
 
     const fetchScreener = async () => {
+      if (coolingOffActive) {
+        if (!cancelled) {
+          setScreenerLoading(false);
+          setWatchlist(buildFallback());
+        }
+        return;
+      }
       setScreenerLoading(true);
       try {
         const parsedMin = Math.max(1, Number(customMinPrice) || 100);
@@ -1940,7 +1947,7 @@ function LeftSidebar({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, activeSymbol, currentPrice, priceChangePct, customMinPrice, customMaxPrice]);
+  }, [activeTab, activeSymbol, currentPrice, priceChangePct, customMinPrice, customMaxPrice, coolingOffActive]);
 
   useEffect(() => {
     onWatchlistUpdate(watchlist);
