@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { AdvancedScreener } from '../analysis/AdvancedScreener';
 
 global.fetch = jest.fn(() =>
@@ -21,5 +21,19 @@ describe('AdvancedScreener', () => {
     render(<AdvancedScreener />);
     expect(screen.getByText('DAYTRADE')).toBeInTheDocument();
     expect(screen.getByText('SWING')).toBeInTheDocument();
+  });
+
+  it('shows lock message when API returns 423', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 423,
+      json: async () => ({ error: 'Cooling-off active: screener temporarily locked' }),
+    });
+
+    render(<AdvancedScreener />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error: Screener locked: Cooling-off active: screener temporarily locked/i)).toBeInTheDocument();
+    });
   });
 });

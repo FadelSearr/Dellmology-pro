@@ -73,10 +73,12 @@ export const AdvancedScreener = () => {
   const [loading, setLoading] = useState(false);
   const [selectedStock, setSelectedStock] = useState<StockScore | null>(null);
   const [minScore, setMinScore] = useState(60);
+  const [error, setError] = useState<string | null>(null);
 
   const runScreening = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await fetch('/api/advanced-screener', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -86,7 +88,22 @@ export const AdvancedScreener = () => {
         }),
       });
 
-      if (!response.ok) throw new Error('Screening failed');
+      if (!response.ok) {
+        let message = 'Screening failed';
+        try {
+          const body = (await response.json()) as { error?: string };
+          if (response.status === 423) {
+            message = `Screener locked: ${body.error || 'cooling-off active'}`;
+          } else if (body?.error) {
+            message = body.error;
+          }
+        } catch {
+          if (response.status === 423) {
+            message = 'Screener locked: cooling-off active';
+          }
+        }
+        throw new Error(message);
+      }
 
       const data = await response.json();
       setResults(data.results);
@@ -96,6 +113,7 @@ export const AdvancedScreener = () => {
       }
     } catch (err) {
       console.error('Error running screening:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -162,6 +180,12 @@ export const AdvancedScreener = () => {
       </div>
 
       {/* Statistics */}
+      {error && (
+        <div className="bg-red-900/20 border border-red-700 rounded p-3 text-sm text-red-300">
+          Error: {error}
+        </div>
+      )}
+
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <div className="bg-gray-900/50 border border-gray-700 rounded p-3">

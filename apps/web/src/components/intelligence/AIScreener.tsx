@@ -41,7 +41,21 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
         });
 
         if (!response.ok) {
-          throw new Error('Failed to run advanced screener');
+          let message = 'Failed to run advanced screener';
+          try {
+            const body = (await response.json()) as { error?: string };
+            if (response.status === 423) {
+              message = `Screener locked: ${body.error || 'cooling-off active'}`;
+            } else if (body?.error) {
+              message = body.error;
+            }
+          } catch {
+            if (response.status === 423) {
+              message = 'Screener locked: cooling-off active';
+            }
+          }
+
+          throw new Error(message);
         }
 
         const payload = await response.json();
