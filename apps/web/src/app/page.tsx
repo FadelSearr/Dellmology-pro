@@ -339,6 +339,8 @@ interface SpoofingAlertState {
 interface ExitWhaleRiskState {
   warning: boolean;
   reason: string | null;
+  signal: 'ACCUMULATION' | 'EXIT_DISTRIBUTION' | 'NEUTRAL';
+  confidence: number;
   eventCount: number;
   strongEventCount: number;
   netDistributionValue: number;
@@ -1408,8 +1410,9 @@ function RightSidebar({
             {exitWhale.warning ? 'Exit Whale / Liquidity Hunt' : 'Exit Whale Normal'}
           </div>
           <div className="text-[9px] text-slate-500 font-mono mt-1">
-            {`Events ${exitWhale.strongEventCount}/${exitWhale.eventCount} | Net ${formatCompactIDR(exitWhale.netDistributionValue)}`}
+            {`Signal ${exitWhale.signal} (${exitWhale.confidence.toFixed(0)}) | Events ${exitWhale.strongEventCount}/${exitWhale.eventCount}`}
           </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">{`Net ${formatCompactIDR(exitWhale.netDistributionValue)}`}</div>
           {exitWhale.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{exitWhale.reason}</div> : null}
           <div
             className={cn(
@@ -2115,6 +2118,8 @@ export default function Home() {
   const [exitWhaleRisk, setExitWhaleRisk] = useState<ExitWhaleRiskState>({
     warning: false,
     reason: null,
+    signal: 'NEUTRAL',
+    confidence: 0,
     eventCount: 0,
     strongEventCount: 0,
     netDistributionValue: 0,
@@ -2363,6 +2368,15 @@ export default function Home() {
     const negotiatedRaw = requests[19] as { items?: Array<{ symbol?: string; trade_type?: string; volume?: number; notional?: number }> } | null;
     const exitWhaleRaw = requests[20] as {
       events?: Array<{ symbol?: string; broker_id?: string; net_value?: number; z_score?: number; note?: string; time?: string }>;
+      summary?: {
+        event_count?: number;
+        strong_event_count?: number;
+        net_distribution_value?: number;
+        warning?: boolean;
+        signal?: 'ACCUMULATION' | 'EXIT_DISTRIBUTION' | 'NEUTRAL';
+        confidence?: number;
+        reason?: string | null;
+      };
       data_source?: SourceAdapterMetaClient;
       degraded?: boolean;
       reason?: string;
@@ -2489,28 +2503,22 @@ export default function Home() {
     }));
     setNegotiatedFeed(negotiatedRows);
 
-    const exitWhaleEvents = (exitWhaleRaw?.events || []).slice(0, 20).map((item) => ({
-      netValue: Number(item.net_value || 0),
-      zScore: Number(item.z_score || 0),
-      note: String(item.note || '').toLowerCase(),
-      time: item.time || null,
-    }));
-    const strongExitEvents = exitWhaleEvents.filter(
-      (event) => event.netValue < 0 && (event.zScore <= -1.5 || /distribution|exit|liquidity|hunt|sell/.test(event.note)),
-    );
-    const exitWhaleNetDistribution = Math.abs(
-      strongExitEvents.reduce((sum, event) => sum + Math.min(0, event.netValue), 0),
-    );
-    const exitWhaleWarning = strongExitEvents.length >= 2 && exitWhaleNetDistribution >= 20_000_000_000;
+    const exitWhaleEvents = (exitWhaleRaw?.events || []).slice(0, 20);
+    const exitWhaleWarning = Boolean(exitWhaleRaw?.summary?.warning);
+    const exitWhaleStrongCount = Number(exitWhaleRaw?.summary?.strong_event_count || 0);
+    const exitWhaleNetDistribution = Math.max(0, Number(exitWhaleRaw?.summary?.net_distribution_value || 0));
+    const exitWhaleSignal = exitWhaleRaw?.summary?.signal || 'NEUTRAL';
+    const exitWhaleConfidence = Math.max(0, Math.min(100, Number(exitWhaleRaw?.summary?.confidence || 0)));
+    const exitWhaleReason = exitWhaleRaw?.summary?.reason || null;
     setExitWhaleRisk({
       warning: exitWhaleWarning,
-      reason: exitWhaleWarning
-        ? `Terdeteksi ${strongExitEvents.length} sinyal distribusi institusi dengan net outflow ${formatCompactIDR(exitWhaleNetDistribution)}.`
-        : null,
-      eventCount: exitWhaleEvents.length,
-      strongEventCount: strongExitEvents.length,
+      reason: exitWhaleReason,
+      signal: exitWhaleSignal,
+      confidence: exitWhaleConfidence,
+      eventCount: Number(exitWhaleRaw?.summary?.event_count || exitWhaleEvents.length),
+      strongEventCount: exitWhaleStrongCount,
       netDistributionValue: exitWhaleNetDistribution,
-      lastEventAt: exitWhaleEvents[0]?.time || null,
+      lastEventAt: (exitWhaleEvents[0]?.time as string | undefined) || null,
     });
 
     setArtificialLiquidity({
@@ -2934,7 +2942,7 @@ export default function Home() {
         `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
         `Volume Profile: ${lateEntryWarning ? 'Late Entry Warning' : 'Normal'}\n` +
         `Order Lifetime: ${spoofingWarning ? 'Spoofing Alert' : 'Stable'}\n` +
-        `Exit Whale: ${exitWhaleWarning ? `RISK (${strongExitEvents.length} events)` : 'Normal'}\n` +
+        `Exit Whale: ${exitWhaleSignal} (${exitWhaleConfidence.toFixed(0)})\n` +
         `Wash Sale: ${washSaleWarning ? `RISK (${washSaleScore.toFixed(1)})` : `Normal (${washSaleScore.toFixed(1)})`}\n` +
         `Iceberg Risk: ${icebergWarning ? `HIGH (${Math.round(Number(icebergSignal?.score || 0))})` : 'Normal'}\n` +
         `Data Integrity: ${incompleteDataWarning ? 'Incomplete Data' : 'Complete'}\n` +
