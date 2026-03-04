@@ -19,6 +19,14 @@ interface OrchestratorState {
     failed_symbols?: string[];
     regression_mismatches?: number;
     refetch_queue_added?: number;
+    fingerprint?: {
+      hard_reset_recommended?: boolean;
+      reasons?: string[];
+      cross_check_deviation_pct?: number;
+      reconciliation_flagged_days?: number;
+      threshold_pct?: number;
+    };
+    worker_hard_reset_requested?: boolean;
     retention?: {
       session_token_flushed?: number;
       trades_purged?: number;
@@ -115,13 +123,15 @@ export async function POST(request: Request) {
     let monthlyResult: OrchestratorState['monthly'] | null = null;
 
     if (runNightly) {
-      const [reconciliation, regression, retention] = await Promise.all([
+      const [reconciliation, regression, retention, fingerprint] = await Promise.all([
         runNightlyReconciliation(symbol, 1, 3),
         runLogicRegression(symbol, 200),
         runRetention(),
+        runStatisticalFingerprint(symbol, 2, 1, 3),
       ]);
 
       let refetchQueueAdded = 0;
+      let workerHardResetRequested = false;
       if (reconciliation.failed_symbols.length > 0) {
         refetchQueueAdded = await enqueueRefetchSymbols(
           reconciliation.failed_symbols,
@@ -130,13 +140,21 @@ export async function POST(request: Request) {
         );
       }
 
+      if (fingerprint.hard_reset_recommended) {
+        workerHardResetRequested = await requestWorkerHardReset(
+          `Fingerprint drift detected: ${fingerprint.reasons.join(' | ')}`,
+        );
+      }
+
       nightlyResult = {
         ran_at: nowUtc.toISOString(),
-        pass: reconciliation.flagged_days === 0 && regression.mismatches === 0,
+        pass: reconciliation.flagged_days === 0 && regression.mismatches === 0 && !fingerprint.hard_reset_recommended,
         reconciliation_flagged_days: reconciliation.flagged_days,
         failed_symbols: reconciliation.failed_symbols,
         regression_mismatches: regression.mismatches,
         refetch_queue_added: refetchQueueAdded,
+        fingerprint,
+        worker_hard_reset_requested: workerHardResetRequested,
         retention,
       };
 
@@ -432,6 +450,79 @@ async function runMonthlyPostMortem() {
       losses: Number(row.losses || 0),
     })),
   };
+}
+
+async function runStatisticalFingerprint(symbol: string, deviationThresholdPct: number, reconThresholdPct: number, reconDays: number) {
+  const latestTradeResult = await db.query(
+    `
+      SELECT price, timestamp
+      FROM trades
+      WHERE symbol = $1
+      ORDER BY timestamp DESC
+      LIMIT 1
+    `,
+    [symbol],
+  );
+
+  const latestPrice = Number(latestTradeResult.rows[0]?.price || 0);
+  const latestTimestamp = latestTradeResult.rows[0]?.timestamp || null;
+
+  let externalPrice = 0;
+  try {
+    const response = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}.JK`, {
+      cache: 'no-store',
+    });
+    if (response.ok) {
+      const body = (await response.json()) as {
+        quoteResponse?: { result?: Array<{ regularMarketPrice?: number }> };
+      };
+      externalPrice = Number(body?.quoteResponse?.result?.[0]?.regularMarketPrice || 0);
+    }
+  } catch {
+    externalPrice = 0;
+  }
+
+  const crossCheckDeviationPct =
+    externalPrice > 0 && latestPrice > 0 ? Number((Math.abs((latestPrice - externalPrice) / externalPrice) * 100).toFixed(4)) : 0;
+
+  const reconciliation = await runNightlyReconciliation(symbol, reconThresholdPct, reconDays);
+
+  const reasons: string[] = [];
+  if (crossCheckDeviationPct > deviationThresholdPct) {
+    reasons.push(`cross-check deviation ${crossCheckDeviationPct.toFixed(2)}% > ${deviationThresholdPct.toFixed(2)}%`);
+  }
+  if (reconciliation.flagged_days > 0) {
+    reasons.push(`reconciliation flagged ${reconciliation.flagged_days}/${reconciliation.checked_days} day(s)`);
+  }
+
+  return {
+    hard_reset_recommended: reasons.length > 0,
+    reasons,
+    latest_trade_at: latestTimestamp,
+    local_price: latestPrice,
+    external_price: externalPrice,
+    cross_check_deviation_pct: crossCheckDeviationPct,
+    reconciliation_flagged_days: reconciliation.flagged_days,
+    threshold_pct: deviationThresholdPct,
+  };
+}
+
+async function requestWorkerHardReset(reason: string): Promise<boolean> {
+  const nowIso = new Date().toISOString();
+  await db.query(
+    `
+      INSERT INTO config (key, value, updated_at)
+      VALUES
+        ('worker_hard_reset_requested', 'true', NOW()),
+        ('worker_hard_reset_reason', $1, NOW()),
+        ('worker_hard_reset_requested_at', $2, NOW())
+      ON CONFLICT (key) DO UPDATE
+      SET value = EXCLUDED.value,
+          updated_at = NOW();
+    `,
+    [reason, nowIso],
+  );
+  return true;
 }
 
 async function runChampionChallenger(symbol: string, days: number, horizonDays: number) {
