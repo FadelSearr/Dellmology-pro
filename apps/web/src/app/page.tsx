@@ -2262,6 +2262,8 @@ export default function Home() {
   });
   const bidWallAgesRef = useRef<Map<number, number>>(new Map());
   const spoofingStreakRef = useRef(0);
+  const portfolioBetaBreachStreakRef = useRef(0);
+  const portfolioBetaCoolingEvaluateInFlightRef = useRef(false);
 
   const [infraStatus, setInfraStatus] = useState<{ sse: Tone; db: Tone; integrity: Tone; token: Tone }>({
     sse: 'good',
@@ -3285,6 +3287,88 @@ export default function Home() {
     high: portfolioBetaEstimate > betaThreshold,
     contributingSymbols: watchlist.length,
   };
+
+  useEffect(() => {
+    if (coolingOff.active) {
+      portfolioBetaCoolingEvaluateInFlightRef.current = false;
+      return;
+    }
+
+    if (!portfolioBetaRisk.high) {
+      portfolioBetaBreachStreakRef.current = 0;
+      portfolioBetaCoolingEvaluateInFlightRef.current = false;
+      return;
+    }
+
+    portfolioBetaBreachStreakRef.current += 1;
+    const requiredBreaches = Math.max(1, runtimeCoolingOffRequiredBreaches);
+    if (portfolioBetaBreachStreakRef.current < requiredBreaches) {
+      return;
+    }
+
+    if (portfolioBetaCoolingEvaluateInFlightRef.current) {
+      return;
+    }
+
+    portfolioBetaCoolingEvaluateInFlightRef.current = true;
+    void (async () => {
+      try {
+        const response = await fetch('/api/system-control/cooling-off', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'evaluate',
+            source: 'portfolio-beta-guard',
+            max_drawdown_pct: runtimeCoolingOffDrawdownPct,
+            threshold_pct: runtimeCoolingOffDrawdownPct,
+            lock_hours: runtimeCoolingOffHours,
+            required_breaches: runtimeCoolingOffRequiredBreaches,
+          }),
+        });
+
+        const body = (await response.json()) as {
+          success?: boolean;
+          active?: boolean;
+          active_until?: string | null;
+          remaining_seconds?: number;
+          breach_streak?: number;
+          reason?: string;
+        };
+
+        if (!response.ok || !body.success) {
+          portfolioBetaCoolingEvaluateInFlightRef.current = false;
+          return;
+        }
+
+        setCoolingOff({
+          active: Boolean(body.active),
+          activeUntil: body.active_until || null,
+          remainingSeconds: Math.max(0, Number(body.remaining_seconds || 0)),
+          breachStreak: Math.max(0, Number(body.breach_streak || 0)),
+          reason: body.reason || null,
+        });
+
+        if (body.active) {
+          setActionState({
+            busy: false,
+            message: `Cooling-off triggered: portfolio beta ${portfolioBetaRisk.betaEstimate.toFixed(2)} > ${portfolioBetaRisk.threshold.toFixed(2)}`,
+          });
+        } else {
+          portfolioBetaCoolingEvaluateInFlightRef.current = false;
+        }
+      } catch {
+        portfolioBetaCoolingEvaluateInFlightRef.current = false;
+      }
+    })();
+  }, [
+    coolingOff.active,
+    portfolioBetaRisk.high,
+    portfolioBetaRisk.betaEstimate,
+    portfolioBetaRisk.threshold,
+    runtimeCoolingOffDrawdownPct,
+    runtimeCoolingOffHours,
+    runtimeCoolingOffRequiredBreaches,
+  ]);
 
   useEffect(() => {
     if (riskDraftDirty) {
