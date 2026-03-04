@@ -1361,6 +1361,8 @@ function RightSidebar({
   newsImpact,
   mtfValidation,
   deploymentGate,
+  coolingOff,
+  runtimeCoolingOffRequiredBreaches,
   goldenRecord,
   marketIntelAdapter,
   sourceHealth,
@@ -1383,6 +1385,8 @@ function RightSidebar({
   newsImpact: NewsImpactState;
   mtfValidation: MultiTimeframeValidationState;
   deploymentGate: DeploymentGateState;
+  coolingOff: CoolingOffState;
+  runtimeCoolingOffRequiredBreaches: number;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   sourceHealth: EndpointSourceHealthState[];
@@ -1390,6 +1394,7 @@ function RightSidebar({
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
+  const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const topDeploymentRuleEngine =
     deploymentGate.regression?.ruleEngineHealth.find((row) => row.mismatches > 0) || deploymentGate.regression?.ruleEngineHealth[0] || null;
 
@@ -1667,6 +1672,31 @@ function RightSidebar({
             </div>
           ) : null}
           {deploymentGate.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{deploymentGate.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              coolingOff.active ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {coolingOff.active
+              ? `Cooling-Off Active ${Math.max(0, Math.floor(coolingOff.remainingSeconds / 60))}m`
+              : `Cooling-Off Standby ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`}
+          </div>
+          <div
+            className={cn(
+              'text-[9px] font-mono mt-1',
+              coolingTriggerLabel === 'PORTFOLIO_BETA_STREAK'
+                ? 'text-amber-300'
+                : coolingTriggerLabel === 'DRAWDOWN_BREACH'
+                  ? 'text-rose-300'
+                  : coolingTriggerLabel === 'MANUAL'
+                    ? 'text-cyan-300'
+                    : 'text-slate-500',
+            )}
+          >
+            {`Trigger ${coolingTriggerLabel} | Streak ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`}
+          </div>
+          {coolingOff.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{coolingOff.reason}</div> : null}
           <div
             className={cn(
               'text-[9px] font-mono border rounded px-2 py-1 mt-2',
@@ -4937,6 +4967,8 @@ export default function Home() {
           newsImpact={newsImpact}
           mtfValidation={mtfValidation}
           deploymentGate={deploymentGate}
+          coolingOff={coolingOff}
+          runtimeCoolingOffRequiredBreaches={runtimeCoolingOffRequiredBreaches}
           goldenRecord={goldenRecordValidation}
           marketIntelAdapter={marketIntelAdapter}
           sourceHealth={sourceHealth}
