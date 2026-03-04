@@ -10,6 +10,8 @@ jest.mock('next/server', () => ({
 
 import { POST as backtestPost } from '@/app/api/backtest/route';
 import { GET as daytradeGet } from '@/app/api/screener/daytrade/route';
+import { GET as swingGet } from '@/app/api/screener/swing/route';
+import { GET as customGet } from '@/app/api/screener/custom/route';
 import { POST as deploymentGatePost } from '@/app/api/system-control/deployment-gate/route';
 import { POST as coolingOffPost } from '@/app/api/system-control/cooling-off/route';
 import { POST as deadmanPost } from '@/app/api/system-control/deadman/route';
@@ -373,5 +375,57 @@ describe('Guardrail lock response consistency', () => {
     } else {
       (globalThis as { fetch?: typeof fetch }).fetch = originalFetch;
     }
+  });
+
+  it('returns 423 cooling-off lock payload for swing screener route', async () => {
+    const mockedCooling = readCoolingOffLockState as jest.MockedFunction<typeof readCoolingOffLockState>;
+    mockedCooling.mockResolvedValueOnce({
+      active: true,
+      activeUntil: '2026-03-04T15:00:00.000Z',
+      remainingSeconds: 4200,
+    });
+
+    const req = {
+      url: 'http://localhost/api/screener/swing?days=7&limit=10',
+    } as unknown as Request;
+
+    const response = await swingGet(req as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Cooling-off active: screener temporarily locked',
+      lock: {
+        active_until: '2026-03-04T15:00:00.000Z',
+        remaining_seconds: 4200,
+      },
+    });
+  });
+
+  it('returns 423 cooling-off lock payload for custom screener route', async () => {
+    const mockedCooling = readCoolingOffLockState as jest.MockedFunction<typeof readCoolingOffLockState>;
+    mockedCooling.mockResolvedValueOnce({
+      active: true,
+      activeUntil: '2026-03-04T16:00:00.000Z',
+      remainingSeconds: 5400,
+    });
+
+    const req = {
+      url: 'http://localhost/api/screener/custom?min_price=100&max_price=500',
+    } as unknown as Request;
+
+    const response = await customGet(req as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Cooling-off active: screener temporarily locked',
+      lock: {
+        active_until: '2026-03-04T16:00:00.000Z',
+        remaining_seconds: 5400,
+      },
+    });
   });
 });
