@@ -2092,6 +2092,10 @@ function LeftSidebar({
   const watchlistAvgUps = watchlistScores.length > 0 ? watchlistScores.reduce((sum, value) => sum + value, 0) / watchlistScores.length : 0;
   const topUpsItem = watchlist.length > 0 ? watchlist.reduce((best, item) => (item.score > best.score ? item : best), watchlist[0]) : null;
   const weakUpsItem = watchlist.length > 0 ? watchlist.reduce((worst, item) => (item.score < worst.score ? item : worst), watchlist[0]) : null;
+  const strongSignalCount = watchlist.filter((item) => item.score >= 85).length;
+  const buySignalCount = watchlist.filter((item) => item.score >= 65 && item.score < 85).length;
+  const neutralSignalCount = watchlist.filter((item) => item.score >= 45 && item.score < 65).length;
+  const sellRiskCount = watchlist.filter((item) => item.score < 45).length;
 
   return (
     <Card className="h-full border-r border-t-0 border-l-0 border-b-0 rounded-none w-64 flex flex-col">
@@ -2174,6 +2178,20 @@ function LeftSidebar({
             title={weakUpsItem ? `Lowest UPS ${weakUpsItem.symbol} ${Math.round(weakUpsItem.score)}/100` : 'Lowest UPS unavailable'}
           >
             {`WEAK ${weakUpsItem ? weakUpsItem.symbol : '-'}`}
+          </div>
+        </div>
+        <div className="px-3 pb-2 grid grid-cols-4 gap-1 text-[9px] font-mono">
+          <div className="border border-emerald-500/30 rounded px-1.5 py-1 bg-emerald-500/10 text-emerald-300 text-center" title="Strong Buy candidates (UPS >= 85)">
+            {`STR ${strongSignalCount}`}
+          </div>
+          <div className="border border-cyan-500/30 rounded px-1.5 py-1 bg-cyan-500/10 text-cyan-300 text-center" title="Buy bias candidates (UPS 65-84)">
+            {`BUY ${buySignalCount}`}
+          </div>
+          <div className="border border-amber-500/30 rounded px-1.5 py-1 bg-amber-500/10 text-amber-300 text-center" title="Neutral candidates (UPS 45-64)">
+            {`NEU ${neutralSignalCount}`}
+          </div>
+          <div className="border border-rose-500/30 rounded px-1.5 py-1 bg-rose-500/10 text-rose-300 text-center" title="Sell risk candidates (UPS < 45)">
+            {`SEL ${sellRiskCount}`}
           </div>
         </div>
         <div className="space-y-px">
