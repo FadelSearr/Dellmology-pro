@@ -1023,6 +1023,12 @@ function TopNavigation({
   const negotiatedNotionalTotal = negotiatedFeed.reduce((total, item) => total + Math.max(0, Number(item.notional) || 0), 0);
   const negotiatedTop = negotiatedFeed[0] || null;
   const degradedEndpointCount = sourceHealth.filter((item) => item.degraded).length;
+  const fallbackEndpoints = sourceHealth.filter((item) => item.degraded && item.fallbackDelayMinutes !== null);
+  const fallbackEndpointCount = fallbackEndpoints.length;
+  const maxFallbackDelayMinutes =
+    fallbackEndpoints.length > 0
+      ? Math.max(...fallbackEndpoints.map((item) => Number(item.fallbackDelayMinutes || 0)))
+      : null;
   const endpointPrimaryLatencies = sourceHealth.map((item) => (typeof item.primaryLatencyMs === 'number' ? item.primaryLatencyMs : null)).filter((value): value is number => value !== null);
   const maxEndpointPrimaryLatency = endpointPrimaryLatencies.length > 0 ? Math.max(...endpointPrimaryLatencies) : null;
   const regimeLabel = !modelConsensus.pass ? 'SIDEWAYS' : modelConsensus.status === 'CONSENSUS_BULL' ? 'UPTREND' : 'DOWNTREND';
@@ -1440,6 +1446,19 @@ function TopNavigation({
           title={`Endpoint degraded ${degradedEndpointCount}/${sourceHealth.length} | Max primary latency ${maxEndpointPrimaryLatency ?? '-'}ms`}
         >
           {`ENDPOINTS ${degradedEndpointCount > 0 ? `DEG ${degradedEndpointCount}` : 'OK'}${maxEndpointPrimaryLatency !== null ? ` ${Math.round(maxEndpointPrimaryLatency)}ms` : ''}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            fallbackEndpointCount > 0 ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30',
+          )}
+          title={
+            fallbackEndpointCount > 0
+              ? `Fallback active ${fallbackEndpointCount}/${sourceHealth.length} endpoints | Max delay ${maxFallbackDelayMinutes ?? '-'}m`
+              : 'No fallback endpoint active'
+          }
+        >
+          {`FBACK ${fallbackEndpointCount > 0 ? `${fallbackEndpointCount}${maxFallbackDelayMinutes !== null ? ` ${Math.round(maxFallbackDelayMinutes)}m` : ''}` : 'OK'}`}
         </div>
         <div
           className={cn(
