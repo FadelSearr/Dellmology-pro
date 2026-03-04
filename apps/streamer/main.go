@@ -37,6 +37,11 @@ const (
 	workerHeartbeatInterval = 5 * time.Minute
 	workerHeartbeatTimeout = 8 * time.Second
 	workerHeartbeatStaleThresholdSeconds = 60
+	telegramAlertAPIURL = "http://localhost:3000/api/telegram-alert"
+	telegramHeartbeatInterval = 5 * time.Minute
+	telegramOfflineThreshold = 10 * time.Minute
+	telegramAlertCooldown = 10 * time.Minute
+	telegramAlertTimeout = 8 * time.Second
 	systemControlPollInterval = 1 * time.Minute
 	systemControlTimeout = 8 * time.Second
 	// Risk Mitigation Config
@@ -151,6 +156,9 @@ var (
 	processedMutex   = &sync.Mutex{}
 	deadLetters      []DeadLetterRecord
 	deadLetterMutex  = &sync.Mutex{}
+	telegramAlertStateMutex = &sync.Mutex{}
+	lastTelegramEmergencyAlertAt time.Time
+	lastTelegramOfflineState bool
 	ErrTokenUnavailable = errors.New("token unavailable")
 )
 
@@ -260,7 +268,142 @@ func main() {
 
 	go startHTTPServer()
 	go startWorkerHeartbeatReporter()
+	go startTelegramHeartbeatMonitor()
 	runStreamer()
+}
+
+func startTelegramHeartbeatMonitor() {
+	targetURL := strings.TrimSpace(os.Getenv("TELEGRAM_HEARTBEAT_URL"))
+	if targetURL == "" {
+		targetURL = telegramAlertAPIURL
+	}
+
+	interval := telegramHeartbeatInterval
+	if raw := strings.TrimSpace(os.Getenv("TELEGRAM_HEARTBEAT_INTERVAL_SECONDS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 30 && parsed <= 3600 {
+			interval = time.Duration(parsed) * time.Second
+		}
+	}
+
+	offlineThreshold := telegramOfflineThreshold
+	if raw := strings.TrimSpace(os.Getenv("TELEGRAM_OFFLINE_THRESHOLD_SECONDS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 60 && parsed <= 7200 {
+			offlineThreshold = time.Duration(parsed) * time.Second
+		}
+	}
+
+	alertCooldown := telegramAlertCooldown
+	if raw := strings.TrimSpace(os.Getenv("TELEGRAM_EMERGENCY_ALERT_COOLDOWN_SECONDS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 60 && parsed <= 7200 {
+			alertCooldown = time.Duration(parsed) * time.Second
+		}
+	}
+
+	timeout := telegramAlertTimeout
+	if raw := strings.TrimSpace(os.Getenv("TELEGRAM_HEARTBEAT_TIMEOUT_SECONDS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 2 && parsed <= 120 {
+			timeout = time.Duration(parsed) * time.Second
+		}
+	}
+
+	client := &http.Client{Timeout: timeout}
+	log.Printf("Telegram heartbeat monitor enabled: %s every %s (offline threshold=%s cooldown=%s)", targetURL, interval, offlineThreshold, alertCooldown)
+
+	publishTelegramHeartbeat(client, targetURL, offlineThreshold, alertCooldown)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		publishTelegramHeartbeat(client, targetURL, offlineThreshold, alertCooldown)
+	}
+}
+
+func publishTelegramHeartbeat(client *http.Client, targetURL string, offlineThreshold time.Duration, alertCooldown time.Duration) {
+	now := time.Now().UTC()
+	staleSeconds := -1
+	state := "warming"
+	isOffline := false
+
+	if !lastMessageAt.IsZero() {
+		staleSeconds = int(now.Sub(lastMessageAt).Seconds())
+		if now.Sub(lastMessageAt) > offlineThreshold {
+			state = "offline"
+			isOffline = true
+		} else {
+			state = "online"
+		}
+	}
+
+	note := fmt.Sprintf("streamer heartbeat %s | stale_seconds=%d", state, staleSeconds)
+	if err := sendTelegramSystemAlert(client, targetURL, "STREAMER_HEARTBEAT_PING", note, staleSeconds); err != nil {
+		log.Printf("WARN: telegram heartbeat ping failed: %v", err)
+	}
+
+	shouldSendEmergency := false
+	shouldSendRecovered := false
+	telegramAlertStateMutex.Lock()
+	if isOffline {
+		if lastTelegramEmergencyAlertAt.IsZero() || now.Sub(lastTelegramEmergencyAlertAt) >= alertCooldown {
+			lastTelegramEmergencyAlertAt = now
+			shouldSendEmergency = true
+		}
+	} else if lastTelegramOfflineState && !lastMessageAt.IsZero() {
+		shouldSendRecovered = true
+	}
+	lastTelegramOfflineState = isOffline
+	telegramAlertStateMutex.Unlock()
+
+	if shouldSendEmergency {
+		emergency := "DELLMOLOGY OFFLINE - CHECK POSITION MANUALLY!"
+		detail := fmt.Sprintf("No stream data for %d seconds (threshold %ds)", staleSeconds, int(offlineThreshold.Seconds()))
+		if err := sendTelegramSystemAlert(client, targetURL, "DELLMOLOGY_OFFLINE", emergency+" | "+detail, staleSeconds); err != nil {
+			log.Printf("WARN: telegram emergency alert failed: %v", err)
+		}
+	}
+
+	if shouldSendRecovered {
+		recovered := fmt.Sprintf("Stream recovered. Latest data seen %d seconds ago", staleSeconds)
+		if err := sendTelegramSystemAlert(client, targetURL, "DELLMOLOGY_RECOVERED", recovered, staleSeconds); err != nil {
+			log.Printf("WARN: telegram recovery alert failed: %v", err)
+		}
+	}
+}
+
+func sendTelegramSystemAlert(client *http.Client, targetURL string, event string, message string, staleSeconds int) error {
+	payload := map[string]interface{}{
+		"type":   "market",
+		"symbol": "SYSTEM",
+		"data": map[string]interface{}{
+			"event":         event,
+			"message":       message,
+			"stale_seconds": staleSeconds,
+			"timestamp":     time.Now().UTC().Format(time.RFC3339),
+			"source":        "streamer-go",
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	request, err := http.NewRequest(http.MethodPost, targetURL, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("telegram alert status %d", response.StatusCode)
+	}
+
+	return nil
 }
 
 func startWorkerHeartbeatReporter() {

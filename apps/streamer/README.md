@@ -74,6 +74,11 @@ export WORKER_RESET_URL=http://localhost:3000/api/system-control/worker-reset
 export WORKER_HEARTBEAT_URL=http://localhost:3000/api/worker-heartbeat
 export WORKER_HEARTBEAT_INTERVAL_SECONDS=300
 export WORKER_HEARTBEAT_TIMEOUT_SECONDS=8
+export TELEGRAM_HEARTBEAT_URL=http://localhost:3000/api/telegram-alert
+export TELEGRAM_HEARTBEAT_INTERVAL_SECONDS=300
+export TELEGRAM_OFFLINE_THRESHOLD_SECONDS=600
+export TELEGRAM_EMERGENCY_ALERT_COOLDOWN_SECONDS=600
+export TELEGRAM_HEARTBEAT_TIMEOUT_SECONDS=8
 ```
 
 ### API Endpoints
@@ -93,6 +98,10 @@ If `is_system_active=false`, the active websocket stream is closed and worker in
 
 If Cloud Worker Reset (`/api/system-control/worker-reset`) is requested, streamer will acknowledge reset,
 close active websocket, and reconnect with a fresh session/token cycle.
+
+Streamer also sends Telegram heartbeat ping via Web API (`/api/telegram-alert`) every 5 minutes (default).
+If stream data is stale for more than 10 minutes (configurable), it emits emergency alert:
+`DELLMOLOGY OFFLINE - CHECK POSITION MANUALLY!` and sends recovery alert once data flow resumes.
 
 ### Performance
 
