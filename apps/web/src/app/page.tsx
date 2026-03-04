@@ -911,6 +911,7 @@ function TopNavigation({
   goldenRecord,
   marketIntelAdapter,
   degradedSources,
+  tokenTelemetry,
   infraStatus,
   globalData,
 }: {
@@ -948,6 +949,7 @@ function TopNavigation({
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   degradedSources: string[];
+  tokenTelemetry: TokenTelemetry;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -960,6 +962,7 @@ function TopNavigation({
   ];
 
   const correlationLabel = Number(globalData?.correlation_strength || 0) >= 0.7 ? 'HIGH' : Number(globalData?.correlation_strength || 0) >= 0.45 ? 'MEDIUM' : 'LOW';
+  const tokenAlert = tokenTelemetry.status !== 'fresh' || tokenTelemetry.deadmanTriggered;
 
   return (
     <header className="h-12 bg-slate-950 border-b border-slate-800 flex items-center px-4 justify-between shrink-0 z-50">
@@ -1245,6 +1248,15 @@ function TopNavigation({
           title={`SRC ${marketIntelAdapter.selectedSource} | P ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms | F ${marketIntelAdapter.fallbackLatencyMs ?? '-'}ms${marketIntelAdapter.primaryError ? ` | ${marketIntelAdapter.primaryError}` : ''}`}
         >
           {`ADAPTER ${marketIntelAdapter.degraded ? 'DEGRADED' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            tokenAlert ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={`Status ${tokenTelemetry.status.toUpperCase()} | ${tokenTelemetry.syncReason || 'unknown'} | jitter ${tokenTelemetry.jitterMs ?? 0}ms | refresh# ${tokenTelemetry.forcedRefreshCount ?? 0} | seen ${tokenTelemetry.extensionLastSeenSeconds ?? '-'}s`}
+        >
+          {`TOKEN ${tokenTelemetry.status.toUpperCase()}${tokenTelemetry.deadmanTriggered ? ' DEADMAN' : ''}`}
         </div>
         <div
           className={cn(
@@ -5265,6 +5277,7 @@ export default function Home() {
         goldenRecord={goldenRecordValidation}
         marketIntelAdapter={marketIntelAdapter}
         degradedSources={degradedSources}
+        tokenTelemetry={tokenTelemetry}
         infraStatus={infraStatus}
         globalData={globalData}
       />
