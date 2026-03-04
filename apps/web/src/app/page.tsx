@@ -36,14 +36,13 @@ type Tone = 'good' | 'warning' | 'error';
 type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | 'D';
 
 interface SnapshotRow {
+  id?: number;
   symbol: string;
   timeframe?: string;
   signal?: 'BUY' | 'SELL' | 'NEUTRAL' | string;
   price?: number;
   created_at: string;
-  payload?: {
-    volume?: number;
-  };
+  payload?: Record<string, unknown>;
 }
 
 interface BrokerFlowApiRow {
@@ -263,6 +262,22 @@ interface BacktestSummaryState {
   pitReason: string | null;
   xaiHighlights: string[];
   completedAt: string;
+}
+
+interface SignalAuditRow {
+  id: string;
+  signal: 'BUY' | 'SELL' | 'NEUTRAL';
+  price: number;
+  createdAt: string;
+  outcome: 'WIN' | 'LOSS' | 'PENDING';
+  clue: string | null;
+}
+
+interface SignalAuditState {
+  rows: SignalAuditRow[];
+  evaluated: number;
+  losses: number;
+  wins: number;
 }
 
 interface TokenTelemetry {
@@ -716,6 +731,67 @@ function buildRuleEngineVersion(source: 'DB' | 'ENV', values: number[]) {
 function shortRuleVersion(version: string) {
   if (version.length <= 16) return version;
   return `${version.slice(0, 9)}..${version.slice(-4)}`;
+}
+
+function extractSnapshotFailureClue(payload: Record<string, unknown> | undefined, fallbackSymbol: string) {
+  if (!payload) return null;
+
+  const washSaleWarning = Boolean((payload.wash_sale_guard as { warning?: boolean } | undefined)?.warning);
+  if (washSaleWarning) return 'Wash-sale risk';
+
+  const exitWhaleWarning = Boolean((payload.exit_whale_risk as { warning?: boolean } | undefined)?.warning);
+  if (exitWhaleWarning) return 'Exit-whale pressure';
+
+  const spoofingWarning = Boolean((payload.spoofing_alert as { warning?: boolean } | undefined)?.warning);
+  if (spoofingWarning) return 'Spoofing alert';
+
+  const dataSanityWarning = Boolean((payload.data_sanity as { warning?: boolean } | undefined)?.warning);
+  if (dataSanityWarning) return 'Data sanity warning';
+
+  const crossCheckWarning = Boolean((payload.price_cross_check as { warning?: boolean } | undefined)?.warning);
+  if (crossCheckWarning) return 'Cross-check lock';
+
+  const mtfWarning = Boolean((payload.multi_timeframe_validation as { warning?: boolean } | undefined)?.warning);
+  if (mtfWarning) return 'MTF conflict';
+
+  const flaggedSymbols = (payload.price_cross_check as { flagged_symbols?: string[] } | undefined)?.flagged_symbols || [];
+  if (Array.isArray(flaggedSymbols) && flaggedSymbols.includes(fallbackSymbol)) return 'Price mismatch';
+
+  return null;
+}
+
+function buildSignalAuditState(rows: SnapshotRow[], latestPrice: number, symbol: string): SignalAuditState {
+  const sortedRows = [...rows]
+    .sort((first, second) => new Date(second.created_at).getTime() - new Date(first.created_at).getTime())
+    .slice(0, 5);
+
+  const mappedRows: SignalAuditRow[] = sortedRows.map((row, index) => {
+    const rawSignal = String(row.signal || 'NEUTRAL').toUpperCase();
+    const signal: 'BUY' | 'SELL' | 'NEUTRAL' = rawSignal === 'BUY' || rawSignal === 'SELL' ? rawSignal : 'NEUTRAL';
+    const entryPrice = Number(row.price || 0);
+    const evaluable = latestPrice > 0 && entryPrice > 0 && (signal === 'BUY' || signal === 'SELL');
+    const isWin = evaluable ? (signal === 'BUY' ? latestPrice >= entryPrice : latestPrice <= entryPrice) : false;
+    const outcome: 'WIN' | 'LOSS' | 'PENDING' = evaluable ? (isWin ? 'WIN' : 'LOSS') : 'PENDING';
+    return {
+      id: String(row.id || `${row.created_at}-${index}`),
+      signal,
+      price: entryPrice,
+      createdAt: row.created_at,
+      outcome,
+      clue: outcome === 'LOSS' ? extractSnapshotFailureClue(row.payload, symbol) : null,
+    };
+  });
+
+  const evaluated = mappedRows.filter((row) => row.outcome !== 'PENDING').length;
+  const losses = mappedRows.filter((row) => row.outcome === 'LOSS').length;
+  const wins = Math.max(0, evaluated - losses);
+
+  return {
+    rows: mappedRows,
+    evaluated,
+    losses,
+    wins,
+  };
 }
 
 function evaluateHistoricalModelConfidence(
@@ -2747,6 +2823,7 @@ function BottomPanel({
   deploymentGate,
   systemKillSwitch,
   backtestSummary,
+  signalAudit,
 }: {
   narrative: string;
   adversarialNarrative: AdversarialNarrative;
@@ -2805,6 +2882,7 @@ function BottomPanel({
   deploymentGate: DeploymentGateState;
   systemKillSwitch: SystemKillSwitchState;
   backtestSummary: BacktestSummaryState | null;
+  signalAudit: SignalAuditState;
 }) {
   const label = confidenceTracking.warning ? 'LOW' : confidence?.confidence_label || 'MEDIUM';
   const accuracy = confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct : Number(confidence?.accuracy_pct || 0);
@@ -3253,6 +3331,30 @@ function BottomPanel({
               <div className="text-slate-600">{`Done ${new Date(backtestSummary.completedAt).toLocaleTimeString('id-ID')}`}</div>
             </div>
           ) : null}
+          <div className="border border-slate-800 rounded px-2 py-1 bg-slate-900/40 text-[9px] font-mono text-slate-400 space-y-1">
+            <div className="text-slate-500 uppercase tracking-wider">Signal Audit Trail</div>
+            <div>{`Eval ${signalAudit.evaluated} | W/L ${signalAudit.wins}/${signalAudit.losses}`}</div>
+            {signalAudit.rows.length > 0 ? (
+              <div className="space-y-1">
+                {signalAudit.rows.slice(0, 3).map((row) => (
+                  <div key={row.id} className="flex items-center justify-between gap-2">
+                    <span className={cn(row.signal === 'BUY' ? 'text-emerald-300' : row.signal === 'SELL' ? 'text-rose-300' : 'text-slate-400')}>
+                      {row.signal}
+                    </span>
+                    <span className="text-slate-500">{row.price > 0 ? row.price.toLocaleString('id-ID') : '-'}</span>
+                    <span className={cn(row.outcome === 'WIN' ? 'text-emerald-300' : row.outcome === 'LOSS' ? 'text-rose-300' : 'text-slate-500')}>
+                      {row.outcome}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-slate-500">No snapshot history</div>
+            )}
+            {signalAudit.rows.find((row) => row.outcome === 'LOSS' && row.clue)?.clue ? (
+              <div className="text-amber-300">{`Loss clue: ${signalAudit.rows.find((row) => row.outcome === 'LOSS' && row.clue)?.clue}`}</div>
+            ) : null}
+          </div>
           <button
             onClick={onResetDeadman}
             disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
@@ -3448,6 +3550,7 @@ export default function Home() {
   const [sourceHealth, setSourceHealth] = useState<EndpointSourceHealthState[]>([]);
   const [actionState, setActionState] = useState<ActionState>({ busy: false, message: null });
   const [backtestSummary, setBacktestSummary] = useState<BacktestSummaryState | null>(null);
+  const [signalAudit, setSignalAudit] = useState<SignalAuditState>({ rows: [], evaluated: 0, losses: 0, wins: 0 });
   const [riskDraft, setRiskDraft] = useState<RuntimeRiskDraft>({
     ihsgRiskTriggerPct: String(KILL_SWITCH_IHSG_DROP_PCT),
     upsMinNormal: String(NORMAL_MIN_UPS),
@@ -4410,6 +4513,7 @@ export default function Home() {
     const mainPriceSeries = snapshotRows.length >= 2 ? snapshotRows : [];
     const firstPrice = Number(mainPriceSeries[0]?.price || marketData[0]?.price || FALLBACK_MARKET_DATA[0].price);
     const lastPrice = Number(mainPriceSeries[mainPriceSeries.length - 1]?.price || marketData[marketData.length - 1]?.price || FALLBACK_MARKET_DATA[FALLBACK_MARKET_DATA.length - 1].price);
+    setSignalAudit(buildSignalAuditState(symbolSnapshots, lastPrice, activeSymbol));
     const deltaPct = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
     const nextConfidenceTracking = evaluateHistoricalModelConfidence(
       symbolSnapshots,
@@ -6218,6 +6322,7 @@ export default function Home() {
           deploymentGate={deploymentGate}
           systemKillSwitch={systemKillSwitch}
           backtestSummary={backtestSummary}
+          signalAudit={signalAudit}
         />
       ) : null}
     </div>
