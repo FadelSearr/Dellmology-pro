@@ -2784,6 +2784,13 @@ function RightSidebar({
         )
       : null;
   const dominantBrokerSharePct = dominantBroker && brokerAbsNetTotal > 0 ? (Math.abs(Number(dominantBroker.net) || 0) / brokerAbsNetTotal) * 100 : 0;
+  const peakAbsZScore = zData.reduce((max, item) => Math.max(max, Math.abs(Number(item.score) || 0)), 0);
+  const zScoreSeverityLabel: 'LOW' | 'MED' | 'HIGH' = peakAbsZScore >= 3 ? 'HIGH' : peakAbsZScore >= 2 ? 'MED' : 'LOW';
+  const zScoreSeverityPct = Math.max(0, Math.min(100, (peakAbsZScore / 3) * 100));
+  const washScoreRatio = washSaleRisk.threshold > 0 ? washSaleRisk.score / washSaleRisk.threshold : washSaleRisk.score;
+  const washSaleSeverityLabel: 'LOW' | 'MED' | 'HIGH' =
+    washScoreRatio >= 1.35 ? 'HIGH' : washScoreRatio >= 0.95 ? 'MED' : 'LOW';
+  const washSaleSeverityPct = Math.max(0, Math.min(100, washScoreRatio * 100));
 
   if (combatMode.active) {
     return (
@@ -2934,6 +2941,39 @@ function RightSidebar({
           <StatusDot status={hasAlert ? 'warning' : 'good'} label={hasAlert ? 'Alert: > 2σ' : 'Normal'} />
         </div>
         <div className="px-3 pb-2">
+          <div className="grid grid-cols-2 gap-1 mb-2">
+            <div className="border border-slate-800 rounded bg-slate-900/30 px-2 py-1" title={`Peak |z| ${peakAbsZScore.toFixed(2)}`}>
+              <div className="flex items-center justify-between text-[8px] font-mono uppercase tracking-wider">
+                <span className="text-slate-500">Z-SEV</span>
+                <span className={cn(zScoreSeverityLabel === 'HIGH' ? 'text-rose-300' : zScoreSeverityLabel === 'MED' ? 'text-amber-300' : 'text-emerald-300')}>
+                  {zScoreSeverityLabel}
+                </span>
+              </div>
+              <div className="mt-1 h-1 rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className={cn('h-full', zScoreSeverityLabel === 'HIGH' ? 'bg-rose-500' : zScoreSeverityLabel === 'MED' ? 'bg-amber-500' : 'bg-emerald-500')}
+                  style={{ width: `${zScoreSeverityPct}%` }}
+                />
+              </div>
+            </div>
+            <div
+              className="border border-slate-800 rounded bg-slate-900/30 px-2 py-1"
+              title={`Wash ratio ${(washScoreRatio * 100).toFixed(0)}% | Score ${washSaleRisk.score.toFixed(1)} / Thr ${washSaleRisk.threshold.toFixed(1)}`}
+            >
+              <div className="flex items-center justify-between text-[8px] font-mono uppercase tracking-wider">
+                <span className="text-slate-500">WASH-SEV</span>
+                <span className={cn(washSaleSeverityLabel === 'HIGH' ? 'text-rose-300' : washSaleSeverityLabel === 'MED' ? 'text-amber-300' : 'text-emerald-300')}>
+                  {washSaleSeverityLabel}
+                </span>
+              </div>
+              <div className="mt-1 h-1 rounded-full bg-slate-800 overflow-hidden">
+                <div
+                  className={cn('h-full', washSaleSeverityLabel === 'HIGH' ? 'bg-rose-500' : washSaleSeverityLabel === 'MED' ? 'bg-amber-500' : 'bg-emerald-500')}
+                  style={{ width: `${washSaleSeverityPct}%` }}
+                />
+              </div>
+            </div>
+          </div>
           <div
             className={cn(
               'text-[9px] font-mono border rounded px-2 py-1',
