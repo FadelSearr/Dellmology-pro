@@ -1070,6 +1070,15 @@ function TopNavigation({
         <div
           className={cn(
             'text-[10px] font-mono border rounded px-2 py-1',
+            newsImpact.divergenceWarning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={newsImpact.divergenceReason || `Retail ${newsImpact.retailSentimentScore.toFixed(1)} | Whale ${newsImpact.whaleFlowBias.toFixed(1)}`}
+        >
+          {`DIVERGE ${newsImpact.divergenceWarning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
             immutableAuditAlert.lockRemainingMs > 0 || immutableAuditAlert.unlockRemainingMs > 0
               ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
               : 'text-slate-500 border-slate-800 bg-slate-900/30',
