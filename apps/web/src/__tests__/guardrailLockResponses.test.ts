@@ -11,6 +11,8 @@ jest.mock('next/server', () => ({
 import { POST as backtestPost } from '@/app/api/backtest/route';
 import { GET as daytradeGet } from '@/app/api/screener/daytrade/route';
 import { POST as deploymentGatePost } from '@/app/api/system-control/deployment-gate/route';
+import { POST as workerResetPost } from '@/app/api/system-control/worker-reset/route';
+import { POST as telegramAlertPost } from '@/app/api/telegram-alert/route';
 import { POST as updateTokenPost } from '@/app/api/update-token/route';
 import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
 import { readCoolingOffLockState } from '@/lib/security/coolingOff';
@@ -130,6 +132,62 @@ describe('Guardrail lock response consistency', () => {
         checked_rows: 4,
         hash_mismatches: 2,
         linkage_mismatches: 0,
+      },
+    });
+  });
+
+  it('returns 423 immutable-audit lock payload for telegram-alert route', async () => {
+    const mockedVerify = verifyRuntimeConfigAuditChain as jest.MockedFunction<typeof verifyRuntimeConfigAuditChain>;
+    mockedVerify.mockResolvedValueOnce({
+      valid: false,
+      checkedRows: 11,
+      hashMismatches: 2,
+      linkageMismatches: 2,
+    });
+
+    const req = {
+      json: async () => ({ type: 'screener', symbol: 'BBCA', data: {} }),
+    } as unknown as Request;
+
+    const response = await telegramAlertPost(req as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Immutable audit chain lock active; telegram alert blocked',
+      lock: {
+        checked_rows: 11,
+        hash_mismatches: 2,
+        linkage_mismatches: 2,
+      },
+    });
+  });
+
+  it('returns 423 immutable-audit lock payload for worker-reset route', async () => {
+    const mockedVerify = verifyRuntimeConfigAuditChain as jest.MockedFunction<typeof verifyRuntimeConfigAuditChain>;
+    mockedVerify.mockResolvedValueOnce({
+      valid: false,
+      checkedRows: 8,
+      hashMismatches: 1,
+      linkageMismatches: 1,
+    });
+
+    const req = {
+      json: async () => ({ action: 'request' }),
+    } as unknown as Request;
+
+    const response = await workerResetPost(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Immutable audit chain lock active; worker reset blocked',
+      lock: {
+        checked_rows: 8,
+        hash_mismatches: 1,
+        linkage_mismatches: 1,
       },
     });
   });
