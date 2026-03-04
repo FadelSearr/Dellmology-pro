@@ -316,7 +316,7 @@ function stableStringify(value: unknown): string {
   return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(objectValue[key])}`).join(',')}}`;
 }
 
-async function verifyRuntimeConfigAuditChain(limit = 1000): Promise<{
+async function verifyRuntimeConfigAuditChain(): Promise<{
   valid: boolean;
   checkedRows: number;
   hashMismatches: number;
@@ -327,9 +327,7 @@ async function verifyRuntimeConfigAuditChain(limit = 1000): Promise<{
       SELECT id, config_key, old_value, new_value, actor, source, payload_hash, previous_hash, record_hash
       FROM runtime_config_audit
       ORDER BY id ASC
-      LIMIT $1
     `,
-    [limit],
   );
 
   let previousRecordHash: string | null = null;
