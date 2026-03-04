@@ -2643,6 +2643,10 @@ function BottomPanel({
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingLastTriggerLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
   const engineHeartbeatLocked = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
+  const telegramBlocked =
+    actionState.busy || coolingOff.active || !modelConsensus.pass || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning || riskConfigLocked;
+  const backtestBlocked =
+    actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning || riskConfigLocked;
   const deploymentGateTopRuleEngine =
     deploymentGate.regression?.ruleEngineHealth.find((row) => row.mismatches > 0) || deploymentGate.regression?.ruleEngineHealth[0] || null;
   const technicalTone =
@@ -2927,11 +2931,31 @@ function BottomPanel({
       </div>
 
       <div className="w-48 flex flex-col bg-slate-950">
-        <SectionHeader title="Actions" icon={Target} />
+        <SectionHeader title="Action Dock" icon={Target} />
         <div className="p-3 grid grid-cols-1 gap-2">
+          <div className="grid grid-cols-2 gap-1">
+            <div
+              className={cn(
+                'text-[9px] font-mono border rounded px-2 py-1 text-center',
+                telegramBlocked ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+              )}
+              title="Telegram action readiness"
+            >
+              {`TG ${telegramBlocked ? 'BLOCK' : 'READY'}`}
+            </div>
+            <div
+              className={cn(
+                'text-[9px] font-mono border rounded px-2 py-1 text-center',
+                backtestBlocked ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+              )}
+              title="Backtest action readiness"
+            >
+              {`BT ${backtestBlocked ? 'BLOCK' : 'READY'}`}
+            </div>
+          </div>
           <button
             onClick={onSendTelegram}
-            disabled={actionState.busy || coolingOff.active || !modelConsensus.pass || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning || riskConfigLocked}
+            disabled={telegramBlocked}
             className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors"
           >
             <Send className="w-3.5 h-3.5" />
@@ -2939,7 +2963,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onRunBacktest}
-            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning || riskConfigLocked}
+            disabled={backtestBlocked}
             className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
           >
             <Clock className="w-3.5 h-3.5" />
