@@ -887,6 +887,7 @@ function TopNavigation({
   incompleteData,
   immutableAuditAlert,
   deploymentGate,
+  systemKillSwitch,
   infraStatus,
   globalData,
 }: {
@@ -900,6 +901,7 @@ function TopNavigation({
   incompleteData: IncompleteDataState;
   immutableAuditAlert: ImmutableAuditAlertState;
   deploymentGate: DeploymentGateState;
+  systemKillSwitch: SystemKillSwitchState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -987,6 +989,15 @@ function TopNavigation({
           title={deploymentGate.reason || 'Deployment gate pass'}
         >
           {`DEPLOY ${deploymentGate.blocked ? 'BLOCK' : 'PASS'}${deploymentGate.regression ? ` ${deploymentGate.regression.mismatches}/${deploymentGate.regression.checkedCases}` : ''}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            systemKillSwitch.active ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={systemKillSwitch.reason || 'Cloud-triggered kill-switch normal'}
+        >
+          {`SYS ${systemKillSwitch.active ? 'KILL ON' : 'KILL OFF'}`}
         </div>
         <div
           className={cn(
@@ -4983,6 +4994,7 @@ export default function Home() {
         incompleteData={incompleteData}
         immutableAuditAlert={immutableAuditAlert}
         deploymentGate={deploymentGate}
+        systemKillSwitch={systemKillSwitch}
         infraStatus={infraStatus}
         globalData={globalData}
       />
