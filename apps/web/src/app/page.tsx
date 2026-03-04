@@ -898,6 +898,10 @@ function TopNavigation({
   dataSanity,
   priceCrossCheck,
   confidenceTracking,
+  configDrift,
+  runtimeConfigSource,
+  runtimeRuleEngineMode,
+  runtimeRuleEngineVersion,
   championChallenger,
   modelConsensus,
   newsImpact,
@@ -942,6 +946,10 @@ function TopNavigation({
   dataSanity: DataSanityState;
   priceCrossCheck: PriceCrossCheckState;
   confidenceTracking: ModelConfidenceTracking;
+  configDrift: boolean;
+  runtimeConfigSource: 'DB' | 'ENV';
+  runtimeRuleEngineMode: 'BASELINE' | 'CUSTOM';
+  runtimeRuleEngineVersion: string;
   championChallenger: ChampionChallengerState;
   modelConsensus: ModelConsensus;
   newsImpact: NewsImpactState;
@@ -1134,6 +1142,15 @@ function TopNavigation({
           title={championChallenger.reason || 'Champion-challenger stable'}
         >
           {`DRIFT ${championChallenger.warning ? 'WARN' : 'OK'}${championChallenger.swapRecommended ? ' SWAP' : ''}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            configDrift ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={`Rule ${runtimeRuleEngineMode}:${runtimeRuleEngineVersion} | Source ${runtimeConfigSource}`}
+        >
+          {`RULE ${runtimeRuleEngineMode}${configDrift ? ' DRIFT' : ''}`}
         </div>
         <div
           className={cn(
@@ -5334,6 +5351,10 @@ export default function Home() {
         dataSanity={dataSanity}
         priceCrossCheck={priceCrossCheck}
         confidenceTracking={confidenceTracking}
+        configDrift={configDrift}
+        runtimeConfigSource={runtimeConfigSource}
+        runtimeRuleEngineMode={runtimeRuleEngineMode}
+        runtimeRuleEngineVersion={runtimeRuleEngineVersion}
         championChallenger={championChallenger}
         modelConsensus={modelConsensus}
         newsImpact={newsImpact}
