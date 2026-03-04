@@ -1373,6 +1373,19 @@ function TopNavigation({
   ];
 
   const correlationLabel = Number(globalData?.correlation_strength || 0) >= 0.7 ? 'HIGH' : Number(globalData?.correlation_strength || 0) >= 0.45 ? 'MEDIUM' : 'LOW';
+  const correlationStrength = Number(globalData?.correlation_strength || 0);
+  const commodityLeadAvgChange =
+    [Number(globalData?.change_gold || 0), Number(globalData?.change_coal || 0), Number(globalData?.change_nickel || 0)].reduce((sum, value) => sum + value, 0) / 3;
+  const ihsgMacroChange = Number(globalData?.change_ihsg || 0);
+  const macroDivergencePct = Math.abs(commodityLeadAvgChange - ihsgMacroChange);
+  const macroAnomalyLabel = macroDivergencePct >= 2.5 ? 'CRITICAL' : macroDivergencePct >= 1.2 ? 'WARN' : 'NORMAL';
+  const macroAnomalyTone =
+    macroAnomalyLabel === 'CRITICAL'
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : macroAnomalyLabel === 'WARN'
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const macroAnomalyReason = `Macro avg ${commodityLeadAvgChange >= 0 ? '+' : ''}${commodityLeadAvgChange.toFixed(2)}% vs IHSG ${ihsgMacroChange >= 0 ? '+' : ''}${ihsgMacroChange.toFixed(2)}% | divergence ${macroDivergencePct.toFixed(2)}%`;
   const globalSentimentLabel = globalData?.global_sentiment || 'BEARISH';
   const globalSentimentTone =
     globalSentimentLabel === 'BULLISH'
@@ -1458,7 +1471,13 @@ function TopNavigation({
       </span>
     )),
     <span key="correlation" className="flex items-center space-x-1">
-      <span className="text-slate-500">CORRELATION:</span> <span className="text-cyan-500">{correlationLabel}</span>
+      <span className="text-slate-500">CORRELATION:</span> <span className="text-cyan-500">{`${correlationLabel} ${correlationStrength.toFixed(2)}`}</span>
+    </span>,
+    <span key="macro-anomaly" className="flex items-center space-x-1">
+      <span className="text-slate-500">ANOM:</span>{' '}
+      <span className={macroAnomalyLabel === 'NORMAL' ? 'text-emerald-400' : macroAnomalyLabel === 'WARN' ? 'text-amber-400' : 'text-rose-400'}>
+        {`${macroAnomalyLabel} ${macroDivergencePct.toFixed(2)}%`}
+      </span>
     </span>,
     <span key="sentiment" className="flex items-center space-x-1">
       <span className="text-slate-500">SENTIMENT:</span> <span className={globalSentimentLabel === 'BULLISH' ? 'text-emerald-400' : 'text-rose-400'}>{globalSentimentLabel}</span>
@@ -1577,6 +1596,9 @@ function TopNavigation({
         </div>
         <div className={cn('text-[10px] font-mono border rounded px-2 py-1', globalSentimentTone)} title="Global sentiment context from correlation feed">
           {`SENT ${globalSentimentLabel}`}
+        </div>
+        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', macroAnomalyTone)} title={macroAnomalyReason}>
+          {`ANOM ${macroAnomalyLabel}${macroAnomalyLabel !== 'NORMAL' ? ` ${macroDivergencePct.toFixed(1)}%` : ''}`}
         </div>
         <div
           className={cn(
