@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { decryptSessionToken } from '@/lib/security/sessionTokenCrypto';
+import { decryptSessionToken, isEncryptedSessionToken } from '@/lib/security/sessionTokenCrypto';
 import { NextResponse } from 'next/server';
 
 // Ensure the API is not cached
@@ -29,6 +29,22 @@ export async function GET() {
     }
 
     const tokenData = result.rows[0];
+
+    if (typeof tokenData.value !== 'string' || !isEncryptedSessionToken(tokenData.value)) {
+      await db.query(
+        "DELETE FROM config WHERE key = 'session_token'",
+      );
+
+      return NextResponse.json(
+        {
+          token: null,
+          available: false,
+          reason: 'Session token rejected: unencrypted format',
+          retry_after_seconds: 15,
+        },
+        { status: 200 },
+      );
+    }
 
     // Optional: Check if the token is expired
     if (tokenData.expires_at) {
