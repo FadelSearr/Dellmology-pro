@@ -1427,11 +1427,20 @@ function TopNavigation({
       ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
       : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
   const fallbackEmergencyActive = engineOffline && (marketIntelAdapter.degraded || degradedEndpointCount > 0);
+  const adapterTotalCount = sourceHealth.length;
+  const adapterHealthyCount = sourceHealth.filter((item) => !item.degraded).length;
+  const adapterIssueCount = Math.max(0, adapterTotalCount - adapterHealthyCount);
   const fallbackStatusTone = fallbackEmergencyActive
     ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
     : fallbackEndpointCount > 0 || marketIntelAdapter.degraded
       ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
       : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const adapterHealthTone =
+    fallbackEmergencyActive || engineOffline
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : adapterIssueCount > 0
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
   const feedDelayed = fallbackEmergencyActive || fallbackEndpointCount > 0 || marketIntelAdapter.degraded;
   const feedBadgeTone = feedDelayed
     ? fallbackEmergencyActive
@@ -2003,6 +2012,16 @@ function TopNavigation({
           title="Infrastructure Health: Go+SSE, TimescaleDB, Data Integrity Shield"
         >
           {`INFRA ${infraCoreHealthyCount}/3${infraCoreIssueCount > 0 ? ` W${infraCoreIssueCount}` : ''}`}
+        </div>
+        <div
+          className={cn('text-[10px] font-mono border rounded px-2 py-1', adapterHealthTone)}
+          title={
+            adapterTotalCount > 0
+              ? `Adapter healthy ${adapterHealthyCount}/${adapterTotalCount} | degraded ${adapterIssueCount} | max primary latency ${maxEndpointPrimaryLatency ?? '-'}ms | fallback ${fallbackEndpointCount}${maxFallbackDelayMinutes !== null ? ` | delay ${Math.round(maxFallbackDelayMinutes)}m` : ''}${degradedSources.length > 0 ? ` | ${degradedSources.join(' | ')}` : ''}`
+              : 'Adapter health is waiting for first refresh'
+          }
+        >
+          {`ADPTR ${adapterTotalCount > 0 ? `${adapterHealthyCount}/${adapterTotalCount}` : 'N/A'}${adapterIssueCount > 0 ? ` D${adapterIssueCount}` : ''}`}
         </div>
         <StatusDot status={infraStatus.sse} label="Go+SSE" />
         <StatusDot status={infraStatus.db} label="TimescaleDB" />
