@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { isEncryptedSessionToken } from '@/lib/security/sessionTokenCrypto';
 
 export const dynamic = 'force-dynamic';
 
@@ -187,11 +188,15 @@ export async function GET(request: Request) {
     let tokenLastUpdatedSeconds: number | null = null;
     try {
       const tokenResult = await db.query(
-        "SELECT expires_at, updated_at FROM config WHERE key = 'session_token' ORDER BY updated_at DESC LIMIT 1",
+        "SELECT value, expires_at, updated_at FROM config WHERE key = 'session_token' ORDER BY updated_at DESC LIMIT 1",
       );
 
       if (tokenResult.rows.length > 0) {
         const tokenRow = tokenResult.rows[0];
+        if (!isEncryptedSessionToken(tokenRow.value)) {
+          tokenAvailable = false;
+          tokenStatus = 'missing';
+        }
         const expiresAt = tokenRow.expires_at ? new Date(tokenRow.expires_at) : null;
         const updatedAt = tokenRow.updated_at ? new Date(tokenRow.updated_at) : null;
         const nowMs = Date.now();
@@ -200,7 +205,7 @@ export async function GET(request: Request) {
           tokenLastUpdatedSeconds = Math.max(0, Math.floor((nowMs - updatedAt.getTime()) / 1000));
         }
 
-        if (expiresAt && !Number.isNaN(expiresAt.getTime())) {
+        if (tokenStatus !== 'missing' && expiresAt && !Number.isNaN(expiresAt.getTime())) {
           tokenExpiresInSeconds = Math.floor((expiresAt.getTime() - nowMs) / 1000);
           if (tokenExpiresInSeconds > 900) {
             tokenAvailable = true;
