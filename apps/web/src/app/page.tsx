@@ -620,6 +620,15 @@ function coolingTriggerFromReason(reason: string | null, active: boolean) {
   return 'NONE' as const;
 }
 
+function buildRuleEngineVersion(source: 'DB' | 'ENV', values: number[]) {
+  const raw = `${source}|${values.map((value) => Number(value).toFixed(6)).join('|')}`;
+  let hash = 0;
+  for (let index = 0; index < raw.length; index += 1) {
+    hash = (hash * 31 + raw.charCodeAt(index)) >>> 0;
+  }
+  return `RE-${source}-${hash.toString(16).padStart(8, '0').toUpperCase()}`;
+}
+
 function evaluateHistoricalModelConfidence(
   snapshots: SnapshotRow[],
   latestPrice: number,
@@ -1797,6 +1806,8 @@ function BottomPanel({
   portfolioBetaBreachStreak,
   configDrift,
   runtimeConfigSource,
+  runtimeRuleEngineMode,
+  runtimeRuleEngineVersion,
   runtimeIhsgDrop,
   runtimeNormalUps,
   runtimeRiskUps,
@@ -1842,6 +1853,8 @@ function BottomPanel({
   portfolioBetaBreachStreak: number;
   configDrift: boolean;
   runtimeConfigSource: 'DB' | 'ENV';
+  runtimeRuleEngineMode: 'BASELINE' | 'CUSTOM';
+  runtimeRuleEngineVersion: string;
   runtimeIhsgDrop: number;
   runtimeNormalUps: number;
   runtimeRiskUps: number;
@@ -1967,7 +1980,7 @@ function BottomPanel({
                 {configDrift ? 'CONFIG DRIFT: runtime thresholds differ from roadmap defaults' : 'CONFIG BASELINE: roadmap defaults'}
               </div>
               <div className="mt-1 text-slate-500">
-                {`Cfg KS@${runtimeIhsgDrop.toFixed(2)}% | UPS N/K ${runtimeNormalUps}/${runtimeRiskUps} | Cap N/K ${(runtimeParticipationCapNormalPct * 100).toFixed(1)}%/${(runtimeParticipationCapRiskPct * 100).toFixed(1)}% | BetaThr ${runtimeSystemicRiskBetaThreshold.toFixed(2)} | AuditStale ${runtimeRiskAuditStaleHours.toFixed(0)}h | CoolOff DD ${runtimeCoolingOffDrawdownPct.toFixed(1)}% x${runtimeCoolingOffRequiredBreaches} / ${runtimeCoolingOffHours.toFixed(0)}h | BetaGate ${SYSTEMIC_RISK_HARD_GATE ? 'ON' : 'OFF'} | SRC ${runtimeConfigSource}`}
+                {`Cfg KS@${runtimeIhsgDrop.toFixed(2)}% | UPS N/K ${runtimeNormalUps}/${runtimeRiskUps} | Cap N/K ${(runtimeParticipationCapNormalPct * 100).toFixed(1)}%/${(runtimeParticipationCapRiskPct * 100).toFixed(1)}% | BetaThr ${runtimeSystemicRiskBetaThreshold.toFixed(2)} | AuditStale ${runtimeRiskAuditStaleHours.toFixed(0)}h | CoolOff DD ${runtimeCoolingOffDrawdownPct.toFixed(1)}% x${runtimeCoolingOffRequiredBreaches} / ${runtimeCoolingOffHours.toFixed(0)}h | BetaGate ${SYSTEMIC_RISK_HARD_GATE ? 'ON' : 'OFF'} | SRC ${runtimeConfigSource} | RULE ${runtimeRuleEngineMode}:${runtimeRuleEngineVersion}`}
               </div>
               <div className="mt-2 border border-slate-800 rounded px-2 py-2 bg-slate-900/30 space-y-1">
                 <div className="text-[9px] text-slate-500 uppercase tracking-wider">Risk Config Editor</div>
@@ -3252,6 +3265,7 @@ export default function Home() {
         `AI: ${signalLabel(nextUps, minUpsForLong).toUpperCase()} BIAS DETECTED.\n` +
         `Price Move (${timeframe}): ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | Volatility: ${volClass}\n` +
         `Risk Gate: ${riskGateLabel}\n` +
+        `Rule Engine: ${runtimeRuleEngineMode} (${runtimeRuleEngineVersion})\n` +
         `System Switch: ${systemKillSwitch.active ? `LOCK (${systemKillSwitch.reason || 'inactive'})` : 'ACTIVE'}\n` +
         `Deploy Gate: ${deployGate?.blocked ? 'BLOCKED' : 'PASS'}\n` +
         `Flow Integrity: ${artificialLiquidityWarning ? 'Artificial Liquidity Warning' : 'Healthy'}\n` +
@@ -3451,6 +3465,20 @@ export default function Home() {
     runtimeCoolingOffHours !== ROADMAP_DEFAULTS.coolingOffHours ||
     runtimeCoolingOffRequiredBreaches !== ROADMAP_DEFAULTS.coolingOffRequiredBreaches ||
     SYSTEMIC_RISK_HARD_GATE !== ROADMAP_DEFAULTS.systemicRiskHardGate;
+  const runtimeRuleEngineMode: 'BASELINE' | 'CUSTOM' = configDrift ? 'CUSTOM' : 'BASELINE';
+  const runtimeRuleEngineVersion = buildRuleEngineVersion(runtimeConfigSource, [
+    runtimeIhsgDrop,
+    runtimeNormalUps,
+    runtimeRiskUps,
+    runtimeParticipationCapNormalPct,
+    runtimeParticipationCapRiskPct,
+    runtimeSystemicRiskBetaThreshold,
+    runtimeRiskAuditStaleHours,
+    runtimeCoolingOffDrawdownPct,
+    runtimeCoolingOffHours,
+    runtimeCoolingOffRequiredBreaches,
+    SYSTEMIC_RISK_HARD_GATE ? 1 : 0,
+  ]);
 
   const estimatedDailyVolumeShares =
     typeof marketTotalVolume === 'number' && marketTotalVolume > 0
@@ -4017,6 +4045,12 @@ export default function Home() {
           is_valid: anchor.isValid,
         })),
       },
+      rule_engine_versioning: {
+        source: runtimeConfigSource,
+        mode: runtimeRuleEngineMode,
+        version: runtimeRuleEngineVersion,
+        config_drift: configDrift,
+      },
       compliance: {
         disclaimer: PERSONAL_RESEARCH_ONLY_DISCLAIMER,
         mode: 'PERSONAL_RESEARCH_ONLY',
@@ -4209,6 +4243,10 @@ export default function Home() {
     sourceHealth,
     ihsgChangePct,
     killSwitchActive,
+    runtimeConfigSource,
+    runtimeRuleEngineMode,
+    runtimeRuleEngineVersion,
+    configDrift,
     liquidityGuard.capPct,
     liquidityGuard.dailyVolumeLots,
     liquidityGuard.impactPct,
@@ -4670,6 +4708,8 @@ export default function Home() {
           portfolioBetaBreachStreak={portfolioBetaBreachStreak}
           configDrift={configDrift}
           runtimeConfigSource={runtimeConfigSource}
+          runtimeRuleEngineMode={runtimeRuleEngineMode}
+          runtimeRuleEngineVersion={runtimeRuleEngineVersion}
           runtimeIhsgDrop={runtimeIhsgDrop}
           runtimeNormalUps={runtimeNormalUps}
           runtimeRiskUps={runtimeRiskUps}
