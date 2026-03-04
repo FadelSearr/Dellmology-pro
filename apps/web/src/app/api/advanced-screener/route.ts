@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { buildCoolingOffLockPayload } from '@/lib/security/lockPayloads';
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -83,16 +84,7 @@ export async function POST(request: NextRequest) {
   try {
     const coolingOff = await getCoolingOffLockState(request);
     if (coolingOff?.active) {
-      return NextResponse.json(
-        {
-          error: 'Cooling-off active: screener temporarily locked',
-          lock: {
-            active_until: coolingOff.activeUntil,
-            remaining_seconds: coolingOff.remainingSeconds,
-          },
-        },
-        { status: 423 },
-      );
+      return NextResponse.json(buildCoolingOffLockPayload(coolingOff, 'Cooling-off active: screener temporarily locked'), { status: 423 });
     }
 
     const body = await request.json();
@@ -149,16 +141,7 @@ export async function GET(request: NextRequest) {
   try {
     const coolingOff = await getCoolingOffLockState(request);
     if (coolingOff?.active) {
-      return NextResponse.json(
-        {
-          error: 'Cooling-off active: screener temporarily locked',
-          lock: {
-            active_until: coolingOff.activeUntil,
-            remaining_seconds: coolingOff.remainingSeconds,
-          },
-        },
-        { status: 423 },
-      );
+      return NextResponse.json(buildCoolingOffLockPayload(coolingOff, 'Cooling-off active: screener temporarily locked'), { status: 423 });
     }
 
     const { searchParams } = new URL(request.url);

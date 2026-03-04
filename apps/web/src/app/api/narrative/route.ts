@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { readCoolingOffLockState } from '@/lib/security/coolingOff';
+import { buildCoolingOffLockPayload } from '@/lib/security/lockPayloads';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,16 +17,7 @@ export async function POST(request: Request) {
   try {
     const coolingOff = await readCoolingOffLockState();
     if (coolingOff.active) {
-      return NextResponse.json(
-        {
-          error: 'Cooling-off active: recommendation temporarily locked',
-          lock: {
-            active_until: coolingOff.activeUntil,
-            remaining_seconds: coolingOff.remainingSeconds,
-          },
-        },
-        { status: 423 },
-      );
+      return NextResponse.json(buildCoolingOffLockPayload(coolingOff, 'Cooling-off active: recommendation temporarily locked'), { status: 423 });
     }
 
     const body = await request.json();

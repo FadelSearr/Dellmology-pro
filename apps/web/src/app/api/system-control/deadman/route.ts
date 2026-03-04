@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
+import { buildImmutableAuditLockPayload } from '@/lib/security/lockPayloads';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,18 +45,7 @@ export async function POST() {
   try {
     const immutableAudit = await verifyRuntimeConfigAuditChain();
     if (!immutableAudit.valid) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Runtime config audit chain verification failed',
-          lock: {
-            checked_rows: immutableAudit.checkedRows,
-            hash_mismatches: immutableAudit.hashMismatches,
-            linkage_mismatches: immutableAudit.linkageMismatches,
-          },
-        },
-        { status: 423 },
-      );
+      return NextResponse.json(buildImmutableAuditLockPayload(immutableAudit), { status: 423 });
     }
 
     const lastResetResult = await db.query(

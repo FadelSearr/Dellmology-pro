@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { readCoolingOffLockState } from "@/lib/security/coolingOff";
+import { buildCoolingOffLockPayload } from "@/lib/security/lockPayloads";
 import { NextRequest, NextResponse } from "next/server";
 
 /**
@@ -15,17 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   const coolingOff = await readCoolingOffLockState();
   if (coolingOff.active) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Cooling-off active: screener temporarily locked',
-        lock: {
-          active_until: coolingOff.activeUntil,
-          remaining_seconds: coolingOff.remainingSeconds,
-        },
-      },
-      { status: 423 },
-    );
+    return NextResponse.json(buildCoolingOffLockPayload(coolingOff, 'Cooling-off active: screener temporarily locked', true), { status: 423 });
   }
 
   const { searchParams } = new URL(request.url);

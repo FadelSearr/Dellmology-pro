@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { readCoolingOffLockState } from '@/lib/security/coolingOff';
+import { buildCoolingOffLockPayload } from '@/lib/security/lockPayloads';
 
 const MIN_BROKERS_FOR_ANALYSIS = 5;
 const MAX_NET_VALUE_THRESHOLD = 10_000_000_000_000; // 10 Trillion, a sanity limit
@@ -44,17 +45,9 @@ export async function POST(request: NextRequest) {
   try {
     const coolingOff = await readCoolingOffLockState();
     if (coolingOff.active) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Cooling-off active: recommendation temporarily locked',
-          lock: {
-            active_until: coolingOff.activeUntil,
-            remaining_seconds: coolingOff.remainingSeconds,
-          },
-        },
-        { status: 423 },
-      );
+      return NextResponse.json(buildCoolingOffLockPayload(coolingOff, 'Cooling-off active: recommendation temporarily locked', true), {
+        status: 423,
+      });
     }
 
     const body = await request.json();
