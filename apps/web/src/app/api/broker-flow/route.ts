@@ -11,6 +11,52 @@ type BrokerCharacterProfile =
   | 'ALGO_ACCUMULATION'
   | 'MIXED_FLOW';
 
+type WhaleCluster =
+  | 'MOMENTUM_ACCUMULATOR'
+  | 'CLOSING_MARKUP'
+  | 'DISTRIBUTION_PRESSURE'
+  | 'NEUTRAL_FLOW';
+
+function classifyWhaleCluster(dailyData: number[]): WhaleCluster {
+  const values = (dailyData || []).map((value) => Number(value || 0));
+  if (values.length === 0) return 'NEUTRAL_FLOW';
+
+  const last = values[values.length - 1] || 0;
+  const prev = values.slice(0, -1);
+  const prevAvg = prev.length > 0 ? prev.reduce((sum, value) => sum + value, 0) / prev.length : 0;
+  const positiveDays = values.filter((value) => value > 0).length;
+  const negativeDays = values.filter((value) => value < 0).length;
+
+  if (last > 0 && prevAvg > 0 && last > Math.abs(prevAvg) * 1.8) return 'CLOSING_MARKUP';
+  if (positiveDays >= Math.ceil(values.length * 0.7)) return 'MOMENTUM_ACCUMULATOR';
+  if (negativeDays >= Math.ceil(values.length * 0.6)) return 'DISTRIBUTION_PRESSURE';
+  return 'NEUTRAL_FLOW';
+}
+
+function calculateBehaviorCorrelation(dailyData: number[]): number {
+  const values = (dailyData || []).map((value) => Number(value || 0));
+  if (values.length < 3) return 0;
+
+  const absValues = values.map((value) => Math.abs(value));
+  const xMean = (values.length - 1) / 2;
+  const yMean = absValues.reduce((sum, value) => sum + value, 0) / absValues.length;
+
+  let numerator = 0;
+  let denomX = 0;
+  let denomY = 0;
+  for (let i = 0; i < absValues.length; i += 1) {
+    const x = i - xMean;
+    const y = absValues[i] - yMean;
+    numerator += x * y;
+    denomX += x * x;
+    denomY += y * y;
+  }
+
+  const denom = Math.sqrt(denomX * denomY);
+  if (!Number.isFinite(denom) || denom === 0) return 0;
+  return Number((numerator / denom).toFixed(3));
+}
+
 function classifyBrokerCharacter(dailyData: number[], activeDays: number): BrokerCharacterProfile {
   const normalized = (dailyData || []).map((value) => Number(value || 0));
   if (normalized.length === 0) return 'MIXED_FLOW';
@@ -111,6 +157,8 @@ export async function GET(request: Request) {
       avg_buy_price: row.avg_buy_price,
       daily_heatmap: row.daily_data,
       character_profile: classifyBrokerCharacter(row.daily_data || [], Number(row.active_days || 0)),
+      whale_cluster: classifyWhaleCluster(row.daily_data || []),
+      behavior_correlation: calculateBehaviorCorrelation(row.daily_data || []),
       is_whale: Math.abs(row.total_net_buy) > 5000000000, // > 5T IDR
       is_retail: Math.abs(row.total_net_buy) < 500000000, // < 500M IDR
     }));

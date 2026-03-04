@@ -99,3 +99,61 @@ CREATE TABLE IF NOT EXISTS cnn_predictions (
 );
 
 CREATE INDEX IF NOT EXISTS cnn_predictions_symbol_date_idx ON cnn_predictions (symbol, date DESC);
+
+-- ---- Security hardening (RLS) ----
+-- This block is safe on local Postgres and Supabase; it only applies policies when roles exist.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    ALTER TABLE trades ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE broker_summaries ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE daily_prices ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE cnn_predictions ENABLE ROW LEVEL SECURITY;
+
+    DROP POLICY IF EXISTS trades_read_anon ON trades;
+    CREATE POLICY trades_read_anon ON trades
+      FOR SELECT TO anon, authenticated
+      USING (true);
+
+    DROP POLICY IF EXISTS broker_summaries_read_anon ON broker_summaries;
+    CREATE POLICY broker_summaries_read_anon ON broker_summaries
+      FOR SELECT TO anon, authenticated
+      USING (true);
+
+    DROP POLICY IF EXISTS daily_prices_read_anon ON daily_prices;
+    CREATE POLICY daily_prices_read_anon ON daily_prices
+      FOR SELECT TO anon, authenticated
+      USING (true);
+
+    DROP POLICY IF EXISTS cnn_predictions_read_anon ON cnn_predictions;
+    CREATE POLICY cnn_predictions_read_anon ON cnn_predictions
+      FOR SELECT TO anon, authenticated
+      USING (true);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    DROP POLICY IF EXISTS trades_write_service_role ON trades;
+    CREATE POLICY trades_write_service_role ON trades
+      FOR ALL TO service_role
+      USING (true)
+      WITH CHECK (true);
+
+    DROP POLICY IF EXISTS broker_summaries_write_service_role ON broker_summaries;
+    CREATE POLICY broker_summaries_write_service_role ON broker_summaries
+      FOR ALL TO service_role
+      USING (true)
+      WITH CHECK (true);
+
+    DROP POLICY IF EXISTS daily_prices_write_service_role ON daily_prices;
+    CREATE POLICY daily_prices_write_service_role ON daily_prices
+      FOR ALL TO service_role
+      USING (true)
+      WITH CHECK (true);
+
+    DROP POLICY IF EXISTS cnn_predictions_write_service_role ON cnn_predictions;
+    CREATE POLICY cnn_predictions_write_service_role ON cnn_predictions
+      FOR ALL TO service_role
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+END $$;

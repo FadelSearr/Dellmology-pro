@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS order_flow_anomalies (
     id SERIAL PRIMARY KEY,
     time TIMESTAMPTZ NOT NULL,
     symbol VARCHAR(10) NOT NULL,
-    anomaly_type VARCHAR(50) NOT NULL, -- 'SPOOFING', 'PHANTOM_LIQUIDITY', 'WASH_SALE', 'LAYERING'
+    anomaly_type VARCHAR(50) NOT NULL, -- 'SPOOFING', 'PHANTOM_LIQUIDITY', 'WASH_SALE', 'LAYERING', 'ICEBERG'
     price DECIMAL(10, 2),
     volume BIGINT,
     severity VARCHAR(10) NOT NULL, -- 'LOW', 'MEDIUM', 'HIGH'
@@ -119,9 +119,45 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        ALTER TABLE order_flow_heatmap ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE order_flow_anomalies ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE market_depth ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE haka_haki_summary ENABLE ROW LEVEL SECURITY;
+
+        DROP POLICY IF EXISTS order_flow_heatmap_read_anon ON order_flow_heatmap;
+        CREATE POLICY order_flow_heatmap_read_anon ON order_flow_heatmap FOR SELECT TO anon, authenticated USING (true);
+
+        DROP POLICY IF EXISTS order_flow_anomalies_read_anon ON order_flow_anomalies;
+        CREATE POLICY order_flow_anomalies_read_anon ON order_flow_anomalies FOR SELECT TO anon, authenticated USING (true);
+
+        DROP POLICY IF EXISTS market_depth_read_anon ON market_depth;
+        CREATE POLICY market_depth_read_anon ON market_depth FOR SELECT TO anon, authenticated USING (true);
+
+        DROP POLICY IF EXISTS haka_haki_summary_read_anon ON haka_haki_summary;
+        CREATE POLICY haka_haki_summary_read_anon ON haka_haki_summary FOR SELECT TO anon, authenticated USING (true);
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        DROP POLICY IF EXISTS order_flow_heatmap_write_service ON order_flow_heatmap;
+        CREATE POLICY order_flow_heatmap_write_service ON order_flow_heatmap FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+        DROP POLICY IF EXISTS order_flow_anomalies_write_service ON order_flow_anomalies;
+        CREATE POLICY order_flow_anomalies_write_service ON order_flow_anomalies FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+        DROP POLICY IF EXISTS market_depth_write_service ON market_depth;
+        CREATE POLICY market_depth_write_service ON market_depth FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+        DROP POLICY IF EXISTS haka_haki_summary_write_service ON haka_haki_summary;
+        CREATE POLICY haka_haki_summary_write_service ON haka_haki_summary FOR ALL TO service_role USING (true) WITH CHECK (true);
+    END IF;
+END $$;
+
 -- Comments for documentation
 COMMENT ON TABLE order_flow_heatmap IS 'Real-time order flow data per price level for heatmap visualization';
 COMMENT ON COLUMN order_flow_heatmap.intensity IS 'Normalized intensity score 0-1 based on volume and activity';
-COMMENT ON TABLE order_flow_anomalies IS 'Detected order flow anomalies: spoofing, phantom liquidity, wash sales, layering';
+COMMENT ON TABLE order_flow_anomalies IS 'Detected order flow anomalies: spoofing, phantom liquidity, wash sales, layering, iceberg';
 COMMENT ON TABLE market_depth IS 'Market depth snapshots with full bid/ask levels';
 COMMENT ON TABLE haka_haki_summary IS 'HAKA (aggressive buy) vs HAKI (aggressive sell) aggregations';

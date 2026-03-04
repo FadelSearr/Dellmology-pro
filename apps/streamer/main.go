@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +33,7 @@ const (
 	rocInterval         = 5 * time.Minute // 5 minute window for RoC check
 	rocPriceDrop        = -0.10           // -10% price drop threshold
 	rocCooldownDuration = 15 * time.Minute // Cooldown period for a flagged symbol
+	redisQueueChannel   = "dellmology:raw:ws"
 )
 
 // --- Structs ---
@@ -48,6 +52,7 @@ type TradeData struct {
 	Price     float64 `json:"p"`
 	Volume    int64   `json:"v"`
 	Timestamp int64   `json:"dt"`
+	Market    string  `json:"market"`
 }
 type QuoteData struct {
 	Symbol string  `json:"s"`
@@ -101,6 +106,12 @@ type CooldownInfo struct {
 	EndTime time.Time
 }
 
+type DeadLetterRecord struct {
+	Payload   string    `json:"payload"`
+	Reason    string    `json:"reason"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
 // --- Global State ---
 var (
 	db               *sql.DB
@@ -111,7 +122,16 @@ var (
 	cooldownSymbols  = make(map[string]CooldownInfo) // For RoC Kill-Switch
 	quotesMutex      = &sync.RWMutex{}
 	priceHistoryMutex = &sync.Mutex{}
+	negotiatedMutex  = &sync.RWMutex{}
 	sseBroker        *Broker
+	messageQueue     chan []byte
+	negotiatedTrades []ProcessedTrade
+	useExternalQueue bool
+	lastMessageAt    time.Time
+	processedMessageHashes = make(map[uint64]time.Time)
+	processedMutex   = &sync.Mutex{}
+	deadLetters      []DeadLetterRecord
+	deadLetterMutex  = &sync.Mutex{}
 	ErrTokenUnavailable = errors.New("token unavailable")
 )
 
@@ -194,10 +214,23 @@ func main() {
 		log.Printf("WARNING: Redis not reachable: %v", err)
 	} else {
 		log.Println("Redis cache connected.")
+		useExternalQueue = strings.EqualFold(os.Getenv("USE_REDIS_QUEUE"), "true")
 	}
 
 	sseBroker = newBroker()
 	go sseBroker.run()
+
+	messageQueue = make(chan []byte, 2048)
+	if useExternalQueue && redisClient != nil {
+		log.Printf("Redis external queue enabled on channel %s", redisQueueChannel)
+		for i := 0; i < 4; i++ {
+			go redisSubscriberWorker(i)
+		}
+	} else {
+		for i := 0; i < 4; i++ {
+			go messageWorker(i)
+		}
+	}
 
 	db, err = initDB()
 	if err != nil {
@@ -272,7 +305,84 @@ func messageLoop(conn *websocket.Conn) {
 			log.Printf("ERROR: Failed to read message: %v", err)
 			return
 		}
-		go processMessage(message)
+		lastMessageAt = time.Now().UTC()
+
+		if useExternalQueue && redisClient != nil {
+			if err := redisClient.Publish(ctx, redisQueueChannel, string(message)).Err(); err != nil {
+				log.Printf("WARN: Redis publish failed, fallback local queue: %v", err)
+				select {
+				case messageQueue <- message:
+				default:
+					log.Printf("WARN: message queue full, dropping message")
+				}
+			}
+			continue
+		}
+		select {
+		case messageQueue <- message:
+		default:
+			log.Printf("WARN: message queue full, dropping message")
+		}
+	}
+}
+
+func messageWorker(id int) {
+	for msg := range messageQueue {
+		handleMessageWithGuard(msg)
+	}
+}
+
+func redisSubscriberWorker(id int) {
+	if redisClient == nil {
+		return
+	}
+	pubsub := redisClient.Subscribe(ctx, redisQueueChannel)
+	defer pubsub.Close()
+	ch := pubsub.Channel()
+	for msg := range ch {
+		handleMessageWithGuard([]byte(msg.Payload))
+	}
+}
+
+func handleMessageWithGuard(msg []byte) {
+	h := fnv.New64a()
+	_, _ = h.Write(msg)
+	hash := h.Sum64()
+
+	processedMutex.Lock()
+	if ts, exists := processedMessageHashes[hash]; exists && time.Since(ts) < 30*time.Second {
+		processedMutex.Unlock()
+		return
+	}
+	processedMessageHashes[hash] = time.Now().UTC()
+	if len(processedMessageHashes) > 10000 {
+		for k, t := range processedMessageHashes {
+			if time.Since(t) > 2*time.Minute {
+				delete(processedMessageHashes, k)
+			}
+		}
+	}
+	processedMutex.Unlock()
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			pushDeadLetter(string(msg), fmt.Sprintf("panic: %v", rec))
+		}
+	}()
+
+	processMessage(msg)
+}
+
+func pushDeadLetter(payload string, reason string) {
+	deadLetterMutex.Lock()
+	defer deadLetterMutex.Unlock()
+	deadLetters = append(deadLetters, DeadLetterRecord{
+		Payload: payload,
+		Reason: reason,
+		Timestamp: time.Now().UTC(),
+	})
+	if len(deadLetters) > 200 {
+		deadLetters = deadLetters[len(deadLetters)-200:]
 	}
 }
 
@@ -284,7 +394,7 @@ func processMessage(rawMsg []byte) {
 	}
 
 	switch msg.Type {
-	case "trade":
+	case "trade", "trade_nego", "trade_cross", "nego", "cross":
 		var trade TradeData
 		if err := json.Unmarshal(msg.Data, &trade); err != nil {
 			log.Printf("WARN: Failed to parse trade data: %v", err)
@@ -304,15 +414,22 @@ func processMessage(rawMsg []byte) {
 		quote, ok := latestQuotes[trade.Symbol]
 		quotesMutex.RUnlock()
 
-		if !ok {
-			return
-		}
-
 		tradeType := "NORMAL"
-		if trade.Price >= quote.Offer {
+		typeLower := strings.ToLower(msg.Type)
+		if strings.Contains(typeLower, "nego") {
+			tradeType = "NEGO"
+		} else if strings.Contains(typeLower, "cross") {
+			tradeType = "CROSS"
+		} else if strings.EqualFold(strings.TrimSpace(trade.Market), "nego") {
+			tradeType = "NEGO"
+		} else if strings.EqualFold(strings.TrimSpace(trade.Market), "cross") {
+			tradeType = "CROSS"
+		} else if ok && trade.Price >= quote.Offer {
 			tradeType = "HAKA"
-		} else if trade.Price <= quote.Bid {
+		} else if ok && trade.Price <= quote.Bid {
 			tradeType = "HAKI"
+		} else if !ok {
+			tradeType = "NORMAL"
 		}
 		
 		processed := ProcessedTrade{
@@ -325,6 +442,9 @@ func processMessage(rawMsg []byte) {
 
 		if err := insertTrade(processed); err != nil {
 			log.Printf("ERROR: Failed to insert trade into DB: %v", err)
+		}
+		if processed.TradeType == "NEGO" || processed.TradeType == "CROSS" {
+			recordNegotiatedTrade(processed)
 		}
 
 		jsonData, err := json.Marshal(processed)
@@ -418,9 +538,56 @@ func insertTrade(t ProcessedTrade) error {
 func startHTTPServer() {
 	mux := http.NewServeMux()
 	mux.Handle("/stream", sseBroker)
+	mux.HandleFunc("/negotiated/latest", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		negotiatedMutex.RLock()
+		defer negotiatedMutex.RUnlock()
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"items": negotiatedTrades,
+			"count": len(negotiatedTrades),
+			"timestamp": time.Now().UTC(),
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "OK")
+	})
+	mux.HandleFunc("/heartbeat", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		staleSeconds := 0
+		if !lastMessageAt.IsZero() {
+			staleSeconds = int(time.Since(lastMessageAt).Seconds())
+		}
+		status := "healthy"
+		if staleSeconds > 60 {
+			status = "stale"
+		}
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": status,
+			"stale_seconds": staleSeconds,
+			"external_queue": useExternalQueue,
+			"checked_at": time.Now().UTC(),
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+	mux.HandleFunc("/dead-letter", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		deadLetterMutex.Lock()
+		rows := append([]DeadLetterRecord(nil), deadLetters...)
+		deadLetterMutex.Unlock()
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"count": len(rows),
+			"items": rows,
+			"checked_at": time.Now().UTC(),
+		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	})
 	log.Printf("SSE and Health server listening on %s", httpListenAddr)
 	if err := http.ListenAndServe(httpListenAddr, mux); err != nil {
@@ -455,4 +622,13 @@ func getAuthToken() (string, error) {
 		return "", fmt.Errorf("%w: %s", ErrTokenUnavailable, reason)
 	}
 	return tokenResp.Token, nil
+}
+
+func recordNegotiatedTrade(t ProcessedTrade) {
+	negotiatedMutex.Lock()
+	defer negotiatedMutex.Unlock()
+	negotiatedTrades = append(negotiatedTrades, t)
+	if len(negotiatedTrades) > 100 {
+		negotiatedTrades = negotiatedTrades[len(negotiatedTrades)-100:]
+	}
 }

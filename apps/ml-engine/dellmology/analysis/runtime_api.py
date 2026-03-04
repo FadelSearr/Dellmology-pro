@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from config import Config
 from dellmology.analysis.backtesting import run_backtest
 from dellmology.telegram.telegram_service import TelegramService
+from dellmology.utils.db_utils import fetch_ohlc_data
 
 router = APIRouter(tags=["runtime-api"])
 
@@ -122,36 +123,30 @@ async def detect_patterns_endpoint(
     min_confidence: float = Query(default=0.6, ge=0.0, le=1.0),
 ):
     symbol_up = symbol.upper()
-    seed = sum(ord(ch) for ch in symbol_up) + lookback
+    candles = fetch_ohlc_data(symbol_up, interval_minutes=5, lookback_hours=max(2, lookback // 20))
+    closes = [float(c.get("close") or 0) for c in reversed(candles) if c.get("close") is not None]
 
-    patterns: List[Dict[str, Any]] = [
-        {
-            "symbol": symbol_up,
-            "pattern_name": "Ascending Triangle",
-            "pattern_type": "BULLISH",
-            "confidence": round(min(0.95, max(min_confidence, 0.68 + (seed % 7) / 100)), 3),
-            "start_date": "2026-02-20",
-            "end_date": "2026-03-03",
-            "entry_price": 9350,
-            "target_price": 9600,
-            "stop_loss": 9240,
-            "pattern_description": "Breakout setup with rising demand near resistance.",
-            "technical_score": 82,
-        },
-        {
-            "symbol": symbol_up,
-            "pattern_name": "Bull Flag",
-            "pattern_type": "BULLISH",
-            "confidence": round(min(0.9, max(min_confidence, 0.62 + (seed % 5) / 100)), 3),
-            "start_date": "2026-02-25",
-            "end_date": "2026-03-03",
-            "entry_price": 9380,
-            "target_price": 9680,
-            "stop_loss": 9300,
-            "pattern_description": "Short consolidation after impulse move.",
-            "technical_score": 78,
-        },
-    ]
+    patterns: List[Dict[str, Any]] = []
+    if len(closes) >= 8:
+        latest = closes[-1]
+        momentum = closes[-1] - closes[-8]
+        bullish = momentum >= 0
+        confidence = round(min(0.95, max(min_confidence, 0.6 + abs(momentum) / max(1.0, closes[-8]) * 2.5)), 3)
+        patterns.append(
+            {
+                "symbol": symbol_up,
+                "pattern_name": "Momentum Continuation" if bullish else "Momentum Breakdown",
+                "pattern_type": "BULLISH" if bullish else "BEARISH",
+                "confidence": confidence,
+                "start_date": datetime.utcnow().date().isoformat(),
+                "end_date": datetime.utcnow().date().isoformat(),
+                "entry_price": latest,
+                "target_price": round(latest * (1.03 if bullish else 0.97), 2),
+                "stop_loss": round(latest * (0.98 if bullish else 1.02), 2),
+                "pattern_description": "Derived from intraday OHLC momentum and volatility profile.",
+                "technical_score": int(confidence * 100),
+            }
+        )
 
     patterns = [pattern for pattern in patterns if float(pattern["confidence"]) >= min_confidence]
 

@@ -20,6 +20,8 @@ type BrokerAnalysis struct {
 	IsWhale          bool    `json:"is_whale"`
 	IsRetail         bool    `json:"is_retail"`
 	IsAnomalous      bool    `json:"is_anomalous"`
+	WhaleCluster     string  `json:"whale_cluster"`
+	ClusterConfidence float64 `json:"cluster_confidence"`
 	Timestamp        time.Time
 }
 
@@ -92,7 +94,7 @@ func (ba *BrokerAnalyzer) AnalyzeBrokerFlow(brokerData []BrokerAnalysis) SymbolB
 
 	// Calculate total volume and net values
 	netValues := make([]float64, 0)
-	for _, broker := range brokerData {
+	for i, broker := range brokerData {
 		stats.TotalVolume += broker.NetBuyLot
 
 		// Add Z-Score
@@ -107,8 +109,11 @@ func (ba *BrokerAnalyzer) AnalyzeBrokerFlow(brokerData []BrokerAnalysis) SymbolB
 			broker.IsRetail = true
 		}
 
-		// Add to Z-Score for later analysis
-		brokerData[len(brokerData)-1] = broker
+		cluster, confidence := ba.classifyWhaleCluster(broker)
+		broker.WhaleCluster = cluster
+		broker.ClusterConfidence = confidence
+
+		brokerData[i] = broker
 
 		netValues = append(netValues, float64(broker.NetBuyValue))
 	}
@@ -121,6 +126,23 @@ func (ba *BrokerAnalyzer) AnalyzeBrokerFlow(brokerData []BrokerAnalysis) SymbolB
 	stats.WashSaleScore = ba.detectWashSales(brokerData, stats.TotalVolume)
 
 	return stats
+}
+
+func (ba *BrokerAnalyzer) classifyWhaleCluster(broker BrokerAnalysis) (string, float64) {
+	absNet := math.Abs(float64(broker.NetBuyValue))
+	consistency := broker.ConsistencyScore
+	z := math.Abs(broker.ZScore)
+
+	if broker.NetBuyValue > 0 && consistency >= 65 && z >= 1.5 {
+		return "MOMENTUM_ACCUMULATOR", math.Min(100, 55+consistency*0.3+z*8)
+	}
+	if broker.NetBuyValue < 0 && consistency >= 55 && z >= 1.2 {
+		return "DISTRIBUTION_PRESSURE", math.Min(100, 50+consistency*0.25+z*10)
+	}
+	if absNet > 0 && consistency <= 30 && z >= 1.0 {
+		return "ONE_DAY_OPERATOR", math.Min(95, 45+z*12)
+	}
+	return "NEUTRAL_FLOW", math.Min(80, 25+z*5)
 }
 
 // detectWashSales uses heuristics to flag suspicious trading patterns

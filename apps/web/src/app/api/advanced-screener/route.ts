@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
-const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8003';
+const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8001';
 
 export interface StockScore {
   symbol: string;

@@ -28,6 +28,16 @@ interface BrokerFlowData {
   last_updated: string;
 }
 
+interface NegotiatedMonitorData {
+  count: number;
+  summary: {
+    total_volume: number;
+    total_notional: number;
+    nego_count: number;
+    cross_count: number;
+  };
+}
+
 interface FilterOption {
   value: string;
   label: string;
@@ -39,6 +49,7 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
   const [days, setDays] = useState(7);
   const [filter, setFilter] = useState('mix');
   const [error, setError] = useState<string | null>(null);
+  const [negotiated, setNegotiated] = useState<NegotiatedMonitorData | null>(null);
 
   const filters: FilterOption[] = [
     { value: 'mix', label: '🎭 Mix' },
@@ -78,6 +89,11 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
     };
 
     fetchBrokerFlow();
+
+    fetch(`/api/negotiated-monitor?symbol=${symbol}&limit=25`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => setNegotiated(payload))
+      .catch(() => setNegotiated(null));
   }, [symbol, days, filter]);
 
   if (error) {
@@ -178,6 +194,18 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
               </div>
             </div>
           </div>
+
+          {negotiated && (
+            <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-4 text-xs text-gray-300">
+              <div className="font-semibold text-white mb-2">Nego Market Feed</div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>Events: <span className="text-cyan-300">{negotiated.count}</span></div>
+                <div>NEGO: <span className="text-emerald-300">{negotiated.summary.nego_count}</span></div>
+                <div>CROSS: <span className="text-orange-300">{negotiated.summary.cross_count}</span></div>
+                <div>Notional: <span className="text-violet-300">{(Number(negotiated.summary.total_notional || 0) / 1e9).toFixed(2)}B</span></div>
+              </div>
+            </div>
+          )}
 
           {/* Heatmap Legend */}
           <div className="flex items-center gap-4 text-xs text-gray-400 bg-gray-900/30 border border-gray-700 rounded-lg p-3">

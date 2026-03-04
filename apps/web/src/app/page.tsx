@@ -1100,6 +1100,7 @@ function RightSidebar({
   mtfValidation,
   marketIntelAdapter,
   sourceHealth,
+  negotiatedFeed,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
@@ -1116,6 +1117,7 @@ function RightSidebar({
   mtfValidation: MultiTimeframeValidationState;
   marketIntelAdapter: AdapterHealthState;
   sourceHealth: EndpointSourceHealthState[];
+  negotiatedFeed: Array<{ symbol: string; trade_type: string; volume: number; notional: number }>;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -1362,18 +1364,19 @@ function RightSidebar({
           <RefreshCw className="w-3 h-3 text-slate-600" />
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-2">
-          {brokers.slice(0, 2).map((broker, idx) => (
+          {(negotiatedFeed.length > 0 ? negotiatedFeed.slice(0, 2) : []).map((item, idx) => (
             <div
-              key={broker.broker}
+              key={`${item.symbol}-${item.trade_type}-${idx}`}
               className={cn('text-[10px] flex justify-between text-slate-400 pl-2 py-1', idx === 0 ? 'border-l-2 border-purple-500 bg-purple-500/5' : 'border-l-2 border-slate-700')}
             >
               <span>
-                {broker.broker} {broker.action}
+                {item.symbol} {item.trade_type}
               </span>
-              <span className="text-slate-500">{formatCompactIDR(broker.net)}</span>
-              <span className="text-slate-600">{new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+              <span className="text-slate-500">{formatCompactIDR(item.notional)}</span>
+              <span className="text-slate-600">{Math.round(item.volume).toLocaleString('id-ID')} lot</span>
             </div>
           ))}
+          {negotiatedFeed.length === 0 ? <div className="text-[10px] text-slate-600 px-2 py-1">No NEGO/CROSS activity</div> : null}
         </div>
       </div>
     </Card>
@@ -1760,7 +1763,7 @@ export default function Home() {
   const [timeframe, setTimeframe] = useState<Timeframe>('15m');
 
   const [marketData, setMarketData] = useState<ChartPoint[]>(FALLBACK_MARKET_DATA);
-  const [brokers, setBrokers] = useState<BrokerRow[]>(FALLBACK_BROKER);
+    const [negotiatedFeed, setNegotiatedFeed] = useState<Array<{ symbol: string; trade_type: string; volume: number; notional: number }>>([]);
   const [zData, setZData] = useState<ZScorePoint[]>(FALLBACK_BROKER.map((item) => ({ time: item.broker, score: item.z })));
   const [heatmapData, setHeatmapData] = useState<Array<{ price: number; volume: number; type: 'Bid' | 'Ask' }>>(
     FALLBACK_HEATMAP,
@@ -2007,6 +2010,7 @@ export default function Home() {
       fetch(`/api/news-impact?symbol=${activeSymbol}`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch(`/api/market-intelligence?symbol=${activeSymbol}&timeframe=15m`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch(`/api/market-intelligence?symbol=${activeSymbol}&timeframe=1h`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch(`/api/negotiated-monitor?symbol=${activeSymbol}&limit=25`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]);
 
     const marketIntel = requests[0] as (MarketIntelResponse & { data_source?: SourceAdapterMetaClient }) | null;
@@ -2098,6 +2102,7 @@ export default function Home() {
     } | null;
     const mtfShortIntel = requests[17] as MarketIntelResponse | null;
     const mtfHighIntel = requests[18] as MarketIntelResponse | null;
+    const negotiatedRaw = requests[19] as { items?: Array<{ symbol?: string; trade_type?: string; volume?: number; notional?: number }> } | null;
 
     const nextDegradedSources: string[] = [];
     const trackDegraded = (name: string, source?: SourceAdapterMetaClient | null, fallbackReason?: string | null) => {
@@ -2201,9 +2206,14 @@ export default function Home() {
       } as BrokerRow;
     });
 
-    if (brokerRows.length > 0) {
-      setBrokers(brokerRows);
-    }
+    
+    const negotiatedRows = (negotiatedRaw?.items || []).slice(0, 10).map((item) => ({
+      symbol: String(item.symbol || activeSymbol),
+      trade_type: String(item.trade_type || 'NEGO').toUpperCase(),
+      volume: Number(item.volume || 0),
+      notional: Number(item.notional || 0),
+    }));
+    setNegotiatedFeed(negotiatedRows);
 
     setArtificialLiquidity({
       warning: Boolean(brokerFlow?.stats?.artificial_liquidity_warning),
@@ -3636,6 +3646,7 @@ export default function Home() {
           mtfValidation={mtfValidation}
           marketIntelAdapter={marketIntelAdapter}
           sourceHealth={sourceHealth}
+          negotiatedFeed={negotiatedFeed}
         />
       </div>
       {!combatMode.active ? (
@@ -3686,3 +3697,5 @@ export default function Home() {
     </div>
   );
 }
+
+

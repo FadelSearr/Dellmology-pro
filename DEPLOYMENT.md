@@ -17,6 +17,40 @@ Complete guide for deploying, scaling, and operating Dellmology Pro in productio
 
 ---
 
+## One-Pass Roadmap Execution Checklist
+
+Gunakan checklist ini untuk mengeksekusi fitur roadmap yang baru diimplementasikan secara berurutan tanpa jeda handoff:
+
+1. Apply DB migration berurutan: `db/init/01-schema.sql` lalu `db/init/04-order-flow.sql` dan `db/init/05-broker-flow.sql`.
+2. Jalankan `apps/streamer` (sekarang queue-based worker internal + negotiated/cross monitor endpoint `/negotiated/latest`).
+3. Jalankan `apps/ml-engine` (screener sudah DB-backed, endpoint pattern detection tidak lagi synthetic, Telegram service real API call).
+4. Jalankan `apps/web` dan verifikasi endpoint:
+  - `/api/advanced-screener`
+  - `/api/negotiated-monitor`
+  - `/api/broker-flow` (dengan `whale_cluster` dan `behavior_correlation`)
+  - `/api/news-impact` (dengan `divergence_warning`)
+5. Validasi UI section:
+  - `AIScreener` menampilkan hasil API real
+  - `Retail Sentiment Divergence` menampilkan data live
+  - `FlowEngine` menampilkan ringkasan Nego/Cross feed
+
+### Smoke Validation (Wajib)
+
+- Streamer: tidak ada panic saat depth/trade burst, endpoint `/health` dan `/negotiated/latest` responsif.
+- Streamer queue broker: endpoint `/heartbeat` menunjukkan status `healthy` saat stream aktif; endpoint `/dead-letter` memantau pesan gagal.
+- ML Engine: endpoint `/api/screen`, `/api/detect-patterns`, `/telegram/alert` menghasilkan respons non-mock.
+- Web: tidak ada error runtime pada `FlowEngine`, `Section3_NeuralNarrative`, `AIScreener`.
+- Web guardrails: endpoint `/api/system-guardrails` dan `/api/commodity-correlation` mengembalikan sinyal valid.
+- Data: tabel `order_flow_anomalies` mulai menerima tipe `ICEBERG` saat refill pattern terdeteksi.
+
+### RLS Verification
+
+- Jalankan skrip verifikasi policy setelah migration:
+  - `db/init/99-rls-smoke.sql`
+- Skrip ini memeriksa status `rowsecurity` dan daftar policy pada tabel-tabel inti roadmap.
+
+---
+
 ## Panduan Deployment (Bahasa Indonesia)
 
 Panduan singkat ini menjelaskan cara menyiapkan dan menjalankan Dellmology Pro menggunakan layanan gratis. Ikuti langkah berikut:

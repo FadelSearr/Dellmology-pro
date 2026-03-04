@@ -8,6 +8,20 @@
 
 ## 🚀 Get Started in 5 Minutes
 
+## 📌 Roadmap Gap Execution (Latest)
+
+- ✅ P0: AI Screener kini consume data real lewat `/api/advanced-screener` (bukan mock generator lokal).
+- ✅ P0: Telegram alert service di ML engine sudah kirim real request ke Telegram Bot API.
+- ✅ P1: Negotiated/Cross monitor tersedia via `/api/negotiated-monitor` + ringkasan tampil di Flow Engine.
+- ✅ P1: Deteksi `ICEBERG` ditambahkan di order-flow anomaly engine.
+- ✅ P1: Broker flow menambahkan `whale_cluster` dan `behavior_correlation`.
+- ✅ P1: Retail sentiment divergence card sekarang live dari endpoint news-impact.
+- ✅ P2: Streamer memakai queue worker internal (decoupling read/process).
+- ✅ P2: SQL schema menambahkan hardening RLS policy block (role-aware).
+
+Langkah verifikasi operasional detail ada di [DEPLOYMENT.md](./DEPLOYMENT.md).
+Status eksekusi roadmap terstruktur ada di [ROADMAP_EXECUTION_MATRIX.md](./ROADMAP_EXECUTION_MATRIX.md).
+
 ### Prerequisites (Install Once)
 ```bash
 # Install Node.js 18+ from https://nodejs.org

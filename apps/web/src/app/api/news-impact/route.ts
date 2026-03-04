@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +15,14 @@ interface NewsImpactResponse {
   stress_score: number;
   penalty_ups: number;
   risk_label: 'LOW' | 'MEDIUM' | 'HIGH';
+  retail_sentiment_score: number;
+  whale_flow_bias: number;
+  divergence_warning: boolean;
+  divergence_reason: string | null;
   red_flags: string[];
   sampled_headlines: NewsImpactItem[];
   checked_at: string;
+  source_breakdown?: Array<{ source: string; samples: number; sentiment_score: number }>;
 }
 
 const POSITIVE_WORDS = ['growth', 'record profit', 'expansion', 'upgrade', 'outperform', 'optimism', 'rebound', 'strong demand'];
@@ -59,31 +65,43 @@ export async function GET(request: Request) {
     const symbol = (searchParams.get('symbol') || 'BBCA').toUpperCase();
 
     const query = encodeURIComponent(`${symbol} Indonesia stock IDX company news`);
-    const response = await fetch(`https://news.google.com/rss/search?q=${query}`, {
+    const googlePromise = fetch(`https://news.google.com/rss/search?q=${query}`, {
       headers: {
         'User-Agent': 'Dellmology-Pro/1.0',
         Accept: 'application/rss+xml, application/xml;q=0.9, */*;q=0.8',
       },
       cache: 'no-store',
-    });
+    }).then((response) => (response.ok ? response.text() : ''));
 
-    if (!response.ok) {
-      return NextResponse.json(
-        fallbackPayload(symbol, 'RSS unavailable'),
-        {
-          status: 200,
-          headers: {
-            'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
-          },
-        },
-      );
-    }
+    const redditPromise = fetch(`https://www.reddit.com/search.rss?q=${encodeURIComponent(symbol + ' saham')}&sort=new`, {
+      headers: {
+        'User-Agent': 'Dellmology-Pro/1.0',
+      },
+      cache: 'no-store',
+    }).then((response) => (response.ok ? response.text() : ''));
 
-    const rss = (await response.text()).toLowerCase();
-    const titles = Array.from(rss.matchAll(/<title><!\[cdata\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/g))
-      .map((match) => (match[1] || match[2] || '').trim())
-      .filter((title) => title.length > 0 && !title.includes('google news'))
-      .slice(0, 25);
+    const stocktwitsPromise = fetch(`https://api.stocktwits.com/api/2/streams/symbol/${encodeURIComponent(symbol)}.json`, {
+      cache: 'no-store',
+    }).then(async (response) => (response.ok ? response.json() : null));
+
+    const [googleRss, redditRss, stocktwitsPayload] = await Promise.all([googlePromise, redditPromise, stocktwitsPromise]);
+
+    const extractTitles = (rss: string, source: 'google' | 'reddit'): string[] => {
+      const normalized = (rss || '').toLowerCase();
+      if (!normalized) return [];
+      return Array.from(normalized.matchAll(/<title><!\[cdata\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/g))
+        .map((match) => (match[1] || match[2] || '').trim())
+        .filter((title) => title.length > 0 && !title.includes('google news') && !title.includes('reddit'))
+        .slice(0, source === 'google' ? 25 : 15);
+    };
+
+    const googleTitles = extractTitles(googleRss, 'google');
+    const redditTitles = extractTitles(redditRss, 'reddit');
+    const stocktwitsTitles = Array.isArray(stocktwitsPayload?.messages)
+      ? stocktwitsPayload.messages.slice(0, 15).map((msg: any) => String(msg?.body || '').toLowerCase()).filter((v: string) => v.length > 0)
+      : [];
+
+    const titles = [...googleTitles, ...redditTitles, ...stocktwitsTitles].slice(0, 40);
 
     if (titles.length === 0) {
       return NextResponse.json(fallbackPayload(symbol, 'No headlines found'), {
@@ -96,6 +114,12 @@ export async function GET(request: Request) {
     const sampled: NewsImpactItem[] = [];
     const redFlagBag = new Set<string>();
     let aggregateScore = 0;
+
+    const sourceBreakdown = [
+      { source: 'google_rss', samples: googleTitles.length, sentiment_score: 0 },
+      { source: 'reddit_rss', samples: redditTitles.length, sentiment_score: 0 },
+      { source: 'stocktwits', samples: stocktwitsTitles.length, sentiment_score: 0 },
+    ];
 
     for (const title of titles) {
       let score = 0;
@@ -127,6 +151,13 @@ export async function GET(request: Request) {
         score,
         red_flags: itemFlags,
       });
+
+      const sourceBucket = sampled.length <= googleTitles.length
+        ? sourceBreakdown[0]
+        : sampled.length <= googleTitles.length + redditTitles.length
+          ? sourceBreakdown[1]
+          : sourceBreakdown[2];
+      sourceBucket.sentiment_score += score;
     }
 
     const averageScore = aggregateScore / Math.max(1, sampled.length);
@@ -134,15 +165,40 @@ export async function GET(request: Request) {
     const penaltyUps = stressScore >= 60 ? 25 : stressScore >= 35 ? 12 : stressScore >= 20 ? 6 : 0;
     const riskLabel: 'LOW' | 'MEDIUM' | 'HIGH' = stressScore >= 60 ? 'HIGH' : stressScore >= 30 ? 'MEDIUM' : 'LOW';
 
+    const whaleFlowResult = await db.query(
+      `
+      SELECT COALESCE(SUM(net_value), 0) AS whale_net
+      FROM broker_flow
+      WHERE symbol = $1
+        AND time >= CURRENT_DATE - INTERVAL '3 days'
+      `,
+      [symbol],
+    );
+    const whaleNet = Number(whaleFlowResult.rows?.[0]?.whale_net || 0);
+    const whaleFlowBias = Math.max(-100, Math.min(100, whaleNet / 1_000_000_000));
+    const retailSentimentScore = Math.max(0, Math.min(100, Number((100 - stressScore).toFixed(2))));
+    const divergenceWarning = retailSentimentScore >= 65 && whaleFlowBias <= -5;
+    const divergenceReason = divergenceWarning
+      ? `Retail sentiment ${retailSentimentScore.toFixed(1)} while whale net flow ${whaleFlowBias.toFixed(1)} (distribution bias)`
+      : null;
+
     const payload: NewsImpactResponse = {
       success: true,
       symbol,
       stress_score: stressScore,
       penalty_ups: penaltyUps,
       risk_label: riskLabel,
+      retail_sentiment_score: retailSentimentScore,
+      whale_flow_bias: Number(whaleFlowBias.toFixed(2)),
+      divergence_warning: divergenceWarning,
+      divergence_reason: divergenceReason,
       red_flags: Array.from(redFlagBag).slice(0, 6),
       sampled_headlines: sampled.slice(0, 10),
       checked_at: new Date().toISOString(),
+      source_breakdown: sourceBreakdown.map((item) => ({
+        ...item,
+        sentiment_score: item.samples > 0 ? Number((item.sentiment_score / item.samples).toFixed(2)) : 0,
+      })),
     };
 
     return NextResponse.json(payload, {
@@ -168,6 +224,10 @@ function fallbackPayload(symbol: string, reason: string): NewsImpactResponse {
     stress_score: 0,
     penalty_ups: 0,
     risk_label: 'LOW',
+    retail_sentiment_score: 0,
+    whale_flow_bias: 0,
+    divergence_warning: false,
+    divergence_reason: reason || null,
     red_flags: reason ? [reason] : [],
     sampled_headlines: [],
     checked_at: new Date().toISOString(),

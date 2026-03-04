@@ -62,27 +62,24 @@ def fetch_recent_trades(symbol: str, limit: int = 1000, lookback_minutes: int = 
     try:
         with get_db_connection() as conn:
             query = text("""
-                SELECT 
+                SELECT
                     timestamp,
                     symbol,
                     price,
                     volume,
-                    buyer_code,
-                    seller_code,
-                    net_value,
                     trade_type
                 FROM trades
                 WHERE symbol = :symbol
-                  AND timestamp > NOW() - INTERVAL ':lookback minutes'
+                  AND timestamp > NOW() - ((:lookback_minutes || ' minutes')::interval)
                 ORDER BY timestamp DESC
                 LIMIT :limit
-            """).bindparams(
-                symbol=symbol,
-                lookback=f"{lookback_minutes} minutes",
-                limit=limit
-            )
+            """)
             
-            result = conn.execute(query)
+            result = conn.execute(query, {
+                "symbol": symbol,
+                "lookback_minutes": int(lookback_minutes),
+                "limit": int(limit),
+            })
             rows = result.fetchall()
             return [dict(row._mapping) for row in rows] if rows else []
     except Exception as e:
@@ -101,22 +98,28 @@ def fetch_order_book(symbol: str) -> Dict:
         with get_db_connection() as conn:
             # Fetch latest order book snapshot
             query = text("""
-                SELECT 
-                    bids,
-                    asks,
-                    timestamp,
-                    last_price
-                FROM order_book_snapshots
+                SELECT
+                    bid_levels,
+                    ask_levels,
+                    time,
+                    mid_price
+                FROM market_depth
                 WHERE symbol = :symbol
-                ORDER BY timestamp DESC
+                ORDER BY time DESC
                 LIMIT 1
-            """).bindparams(symbol=symbol)
+            """)
             
-            result = conn.execute(query)
+            result = conn.execute(query, {"symbol": symbol})
             row = result.fetchone()
             
             if row:
-                return dict(row._mapping)
+                payload = dict(row._mapping)
+                return {
+                    'bids': payload.get('bid_levels') or [],
+                    'asks': payload.get('ask_levels') or [],
+                    'timestamp': payload.get('time'),
+                    'last_price': float(payload.get('mid_price') or 0),
+                }
             
             return {'bids': {}, 'asks': {}, 'last_price': 0}
     except Exception as e:
@@ -138,24 +141,23 @@ def fetch_broker_flows(symbol: str, days: int = 7) -> Dict[str, Dict]:
     try:
         with get_db_connection() as conn:
             query = text("""
-                SELECT 
-                    buyer_code as broker,
-                    SUM(net_value) as net_value,
-                    COUNT(*) as trade_count,
-                    AVG(price) as avg_price,
-                    MAX(timestamp) as last_trade
-                FROM trades
+                SELECT
+                    broker_code AS broker,
+                    SUM(net_value) AS net_value,
+                    COUNT(*) AS trade_count,
+                    AVG(NULLIF(buy_volume, 0)) AS avg_buy,
+                    MAX(time) AS last_trade,
+                    AVG(consistency_score) AS consistency_score,
+                    AVG(z_score) AS z_score
+                FROM broker_flow
                 WHERE symbol = :symbol
-                  AND timestamp > NOW() - INTERVAL ':days days'
-                GROUP BY buyer_code
+                  AND time > CURRENT_DATE - ((:days || ' days')::interval)
+                GROUP BY broker_code
                 HAVING SUM(net_value) IS NOT NULL
                 ORDER BY SUM(net_value) DESC
-            """).bindparams(
-                symbol=symbol,
-                days=f"{days} days"
-            )
+            """)
             
-            result = conn.execute(query)
+            result = conn.execute(query, {"symbol": symbol, "days": int(days)})
             rows = result.fetchall()
             
             flows = {}
@@ -164,8 +166,10 @@ def fetch_broker_flows(symbol: str, days: int = 7) -> Dict[str, Dict]:
                 flows[broker] = {
                     'net_value': float(row.net_value or 0),
                     'trade_count': row.trade_count,
-                    'avg_price': float(row.avg_price or 0),
-                    'last_trade': row.last_trade.isoformat() if row.last_trade else None
+                    'avg_price': float(row.avg_buy or 0),
+                    'last_trade': row.last_trade.isoformat() if row.last_trade else None,
+                    'consistency_score': float(row.consistency_score or 0),
+                    'z_score': float(row.z_score or 0),
                 }
             
             return flows
@@ -199,15 +203,15 @@ def fetch_ohlc_data(symbol: str, interval_minutes: int = 5, lookback_hours: int 
                     SUM(volume) as volume
                 FROM trades
                 WHERE symbol = :symbol
-                  AND timestamp > NOW() - INTERVAL ':lookback hours'
+                  AND timestamp > NOW() - ((:lookback_hours || ' hours')::interval)
                 GROUP BY time_bucket
                 ORDER BY time_bucket DESC
-            """).bindparams(
-                symbol=symbol,
-                lookback=f"{lookback_hours} hours"
-            )
+            """)
             
-            result = conn.execute(query)
+            result = conn.execute(query, {
+                'symbol': symbol,
+                'lookback_hours': int(lookback_hours),
+            })
             rows = result.fetchall()
             
             ohlc_list = []
@@ -232,22 +236,22 @@ def fetch_anomalies(symbol: str, lookback_hours: int = 2) -> List[Dict]:
     try:
         with get_db_connection() as conn:
             query = text("""
-                SELECT 
+                SELECT
                     symbol,
                     anomaly_type,
                     severity,
                     description,
-                    detected_at
-                FROM data_validation_anomalies
+                    time AS detected_at
+                FROM order_flow_anomalies
                 WHERE symbol = :symbol
-                  AND detected_at > NOW() - INTERVAL ':lookback hours'
-                ORDER BY detected_at DESC
-            """).bindparams(
-                symbol=symbol,
-                lookback=f"{lookback_hours} hours"
-            )
+                  AND time > NOW() - ((:lookback_hours || ' hours')::interval)
+                ORDER BY time DESC
+            """)
             
-            result = conn.execute(query)
+            result = conn.execute(query, {
+                'symbol': symbol,
+                'lookback_hours': int(lookback_hours),
+            })
             rows = result.fetchall()
             return [dict(row._mapping) for row in rows] if rows else []
     except Exception as e:
@@ -301,7 +305,7 @@ def get_db_health() -> Dict[str, bool]:
             table_names = [row.table_name for row in result]
             
             health['trades_table'] = 'trades' in table_names
-            health['order_book_table'] = 'order_book_snapshots' in table_names
+            health['order_book_table'] = 'market_depth' in table_names
     except Exception as e:
         logger.error(f"Health check failed: {e}")
     

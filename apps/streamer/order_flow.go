@@ -98,11 +98,13 @@ type OrderFlowTracker struct {
 	mu           sync.RWMutex
 	orderHistory map[string]*OrderBookSnapshot
 	anomalies    map[string][]OrderFlowAnomaly
+	refillCounts map[string]map[float64]int
 }
 
 var orderFlowTracker = &OrderFlowTracker{
 	orderHistory: make(map[string]*OrderBookSnapshot),
 	anomalies:    make(map[string][]OrderFlowAnomaly),
+	refillCounts: make(map[string]map[float64]int),
 }
 
 type OrderBookSnapshot struct {
@@ -192,6 +194,12 @@ func detectAnomalies(symbol string, current *OrderBookSnapshot) []OrderFlowAnoma
 		return anomalies
 	}
 
+	orderFlowTracker.mu.Lock()
+	if _, ok := orderFlowTracker.refillCounts[symbol]; !ok {
+		orderFlowTracker.refillCounts[symbol] = make(map[float64]int)
+	}
+	orderFlowTracker.mu.Unlock()
+
 	// --- SPOOFING: Order appears and disappears without trade ---
 	for price, currentVol := range current.Bids {
 		prevVol, existed := previous.Bids[price]
@@ -280,6 +288,54 @@ func detectAnomalies(symbol string, current *OrderBookSnapshot) []OrderFlowAnoma
 			Severity:    "MEDIUM",
 			Description: "Large volume increase with no price movement (potential phantom liquidity)",
 		})
+	}
+
+	// --- ICEBERG: repeated volume refill at same level after partial consumption ---
+	const minIcebergVolume int64 = 50000
+	const refillBandLow = 0.7
+	const refillBandHigh = 1.3
+	const minRefillCycles = 3
+
+	trackRefill := func(price float64, prevVol, currVol int64, side string) {
+		orderFlowTracker.mu.Lock()
+		defer orderFlowTracker.mu.Unlock()
+		refillState := orderFlowTracker.refillCounts[symbol]
+
+		if prevVol < minIcebergVolume || currVol < minIcebergVolume {
+			refillState[price] = 0
+			return
+		}
+
+		ratio := float64(currVol) / float64(prevVol)
+		if ratio >= refillBandLow && ratio <= refillBandHigh {
+			refillState[price] = refillState[price] + 1
+		} else {
+			refillState[price] = 0
+		}
+
+		if refillState[price] >= minRefillCycles {
+			anomalies = append(anomalies, OrderFlowAnomaly{
+				Timestamp:   time.Now(),
+				Symbol:      symbol,
+				Type:        "ICEBERG",
+				Price:       price,
+				Volume:      currVol,
+				Severity:    "MEDIUM",
+				Description: fmt.Sprintf("Potential iceberg on %s side: repeated refill at %.2f", side, price),
+			})
+			refillState[price] = 0
+		}
+	}
+
+	for price, currVol := range current.Bids {
+		if prevVol, exists := previous.Bids[price]; exists {
+			trackRefill(price, prevVol, currVol, "BID")
+		}
+	}
+	for price, currVol := range current.Asks {
+		if prevVol, exists := previous.Asks[price]; exists {
+			trackRefill(price, prevVol, currVol, "ASK")
+		}
 	}
 
 	return anomalies

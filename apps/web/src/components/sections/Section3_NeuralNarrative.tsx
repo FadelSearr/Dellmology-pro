@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Brain, Filter } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { AIScreener } from '@/components/intelligence/AIScreener';
@@ -27,6 +27,50 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
 }) => {
   const [screenerMode, setScreenerMode] = useState<'DAYTRADE' | 'SWING' | 'CUSTOM'>('DAYTRADE');
   const [priceRange, setPriceRange] = useState({ min: 100, max: 10000 });
+  const [sentimentData, setSentimentData] = useState<{
+    retailSentiment: number;
+    whaleBias: number;
+    warning: boolean;
+    reason: string;
+  }>({
+    retailSentiment: 0,
+    whaleBias: 0,
+    warning: false,
+    reason: 'Loading divergence signal...',
+  });
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadDivergence = async () => {
+      try {
+        const response = await fetch(`/api/news-impact?symbol=${encodeURIComponent(symbol)}`);
+        const payload = response.ok ? await response.json() : null;
+        if (!mounted || !payload) return;
+
+        setSentimentData({
+          retailSentiment: Number(payload.retail_sentiment_score || 0),
+          whaleBias: Number(payload.whale_flow_bias || 0),
+          warning: Boolean(payload.divergence_warning),
+          reason: String(payload.divergence_reason || 'No divergence detected'),
+        });
+      } catch {
+        if (!mounted) return;
+        setSentimentData((prev) => ({
+          ...prev,
+          warning: false,
+          reason: 'Sentiment service unavailable',
+        }));
+      }
+    };
+
+    loadDivergence();
+    const timer = setInterval(loadDivergence, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [symbol]);
 
   return (
     <div className="space-y-4">
@@ -117,17 +161,27 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <div className="text-xs text-gray-400 mb-1">Retail Sentiment</div>
-              <div className="text-2xl font-bold text-green-400">+78%</div>
-              <div className="text-xs text-gray-500">Very Bullish</div>
+              <div className={`text-2xl font-bold ${sentimentData.retailSentiment >= 60 ? 'text-green-400' : 'text-slate-300'}`}>
+                {sentimentData.retailSentiment.toFixed(0)}%
+              </div>
+              <div className="text-xs text-gray-500">{sentimentData.retailSentiment >= 60 ? 'Very Bullish' : 'Neutral / Mixed'}</div>
             </div>
             <div>
               <div className="text-xs text-gray-400 mb-1">Whale Confidence</div>
-              <div className="text-2xl font-bold text-orange-400">+35%</div>
-              <div className="text-xs text-gray-500">Moderate</div>
+              <div className={`text-2xl font-bold ${sentimentData.whaleBias < 0 ? 'text-red-400' : 'text-orange-400'}`}>
+                {sentimentData.whaleBias > 0 ? '+' : ''}{sentimentData.whaleBias.toFixed(1)}
+              </div>
+              <div className="text-xs text-gray-500">{sentimentData.whaleBias < 0 ? 'Distribution Bias' : 'Accumulation / Neutral'}</div>
             </div>
           </div>
-          <div className="bg-yellow-900/20 border border-yellow-700 rounded p-3 text-xs text-yellow-200">
-            ⚠️ DIVERGENCE DETECTED: Retail euphoria but whale accumulation slowing. Risk of distribution incoming.
+          <div
+            className={`rounded p-3 text-xs ${
+              sentimentData.warning
+                ? 'bg-yellow-900/20 border border-yellow-700 text-yellow-200'
+                : 'bg-emerald-900/20 border border-emerald-700 text-emerald-200'
+            }`}
+          >
+            {sentimentData.warning ? '⚠️ DIVERGENCE DETECTED' : '✅ DIVERGENCE NORMAL'}: {sentimentData.reason}
           </div>
         </div>
       </Card>

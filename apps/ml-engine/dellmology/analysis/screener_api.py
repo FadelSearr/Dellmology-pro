@@ -18,6 +18,7 @@ from dellmology.utils.db_utils import (
     fetch_all_symbols,
     get_db_health,
     fetch_order_book,
+    fetch_anomalies,
 )
 
 import redis
@@ -234,19 +235,65 @@ def get_all_symbols() -> List[str]:
 
 
 def generate_screening_data(symbols: List[str]) -> List[Dict]:
-    """Create a minimal data structure for screener containing random/mock values."""
-    import random
-    data = []
+    """Create screener payload from real DB-backed market data with deterministic fallback."""
+    data: List[Dict] = []
+
     for symbol in symbols:
+        trades = fetch_recent_trades(symbol=symbol, limit=500, lookback_minutes=180)
+        ohlc = fetch_ohlc_data(symbol=symbol, interval_minutes=5, lookback_hours=12)
+        broker_flows = fetch_broker_flows(symbol=symbol, days=7)
+        anomalies = fetch_anomalies(symbol=symbol, lookback_hours=6)
+
+        if not trades and not ohlc:
+            continue
+
+        latest_price = 0.0
+        if trades:
+            latest_price = float(trades[0].get('price') or 0)
+        elif ohlc:
+            latest_price = float(ohlc[0].get('close') or 0)
+
+        closes = [float(c.get('close') or 0) for c in reversed(ohlc) if c.get('close') is not None]
+        atr_percent = 0.0
+        if len(closes) >= 2 and latest_price > 0:
+            diffs = [abs(closes[i] - closes[i - 1]) for i in range(1, len(closes))]
+            atr_percent = (sum(diffs) / len(diffs)) / latest_price * 100
+
+        haka_volume = sum(int(t.get('volume') or 0) for t in trades if str(t.get('trade_type') or '').upper() == 'HAKA')
+        haki_volume = sum(int(t.get('volume') or 0) for t in trades if str(t.get('trade_type') or '').upper() == 'HAKI')
+        total_volume = sum(int(t.get('volume') or 0) for t in trades)
+        denom = haka_volume + haki_volume
+        haka_ratio = float(haka_volume) / float(denom) if denom > 0 else 0.5
+
+        patterns: List[Dict] = []
+        if len(closes) >= 6:
+            momentum = closes[-1] - closes[-6]
+            trend_up = momentum > 0
+            confidence = min(0.92, 0.6 + (abs(momentum) / max(1.0, closes[-6])) * 3)
+            patterns.append({
+                "pattern_name": "Momentum Continuation" if trend_up else "Momentum Breakdown",
+                "pattern_type": "BULLISH" if trend_up else "BEARISH",
+                "confidence": round(confidence, 3),
+                "entry_price": latest_price,
+                "target_price": latest_price * (1.03 if trend_up else 0.97),
+                "stop_loss": latest_price * (0.98 if trend_up else 1.02),
+            })
+
         data.append({
             'symbol': symbol,
-            'current_price': random.uniform(1000, 5000),
-            'atr_percent': random.uniform(0.5, 5),
-            'patterns': [],
-            'broker_flows': {},
-            'heatmap': {'haka_volume': 0, 'haki_volume': 0, 'total_volume': 0, 'haka_ratio': 0},
-            'anomalies': [],
+            'current_price': latest_price,
+            'atr_percent': atr_percent,
+            'patterns': patterns,
+            'broker_flows': broker_flows,
+            'heatmap': {
+                'haka_volume': haka_volume,
+                'haki_volume': haki_volume,
+                'total_volume': total_volume,
+                'haka_ratio': haka_ratio,
+            },
+            'anomalies': anomalies,
         })
+
     return data
 
 

@@ -34,45 +34,30 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
         setLoading(true);
         setError(null);
 
-        // In production, this would call a dedicated screener API
-        // For now, generate mock results based on mode
-        const mockResults: ScreenerResult[] = [];
+        const response = await fetch('/api/advanced-screener', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: selectedMode, minScore: 0.6 }),
+        });
 
-        const stocks = ['BBCA', 'TLKM', 'GOTO', 'BBNI', 'ASII', 'BMRI', 'INDF', 'UNTR'];
-
-        for (const stock of stocks) {
-          // assign a mock price between 50 and 1500 IDR
-          const price = Math.floor(50 + Math.random() * 1450);
-
-          if (selectedMode === 'DAYTRADE') {
-            // High volatility, high HAKA ratio
-            mockResults.push({
-              symbol: stock,
-              signal_score: Math.floor(50 + Math.random() * 50),
-              haka_ratio: Math.random() * 60 + 40,
-              volatility: Math.random() * 4 + 2,
-              consistency: Math.random() * 50,
-              price,
-              reason: '📈 High volatility + Strong HAKA dominance',
-              recommendation: 'SCALPING - Entry on HAKA surge'
-            });
-          } else {
-            // Broker accumulation, solid technicals
-            mockResults.push({
-              symbol: stock,
-              signal_score: Math.floor(40 + Math.random() * 50),
-              haka_ratio: Math.random() * 40 + 30,
-              volatility: Math.random() * 2 + 0.5,
-              consistency: Math.random() * 100,
-              price,
-              reason: '🐋 Whale accumulation + Broker consistency',
-              recommendation: 'SWING - Hold 2-5 days'
-            });
-          }
+        if (!response.ok) {
+          throw new Error('Failed to run advanced screener');
         }
 
+        const payload = await response.json();
+        const mappedResults: ScreenerResult[] = (payload?.results || []).map((item: any) => ({
+          symbol: String(item.symbol || ''),
+          signal_score: Number(item.score || 0),
+          haka_ratio: Number(item.haka_ratio || 0) * 100,
+          volatility: Number(item.volatility_percent || 0),
+          consistency: Number(item.flow_score || 0),
+          price: Number(item.current_price || 0),
+          reason: String(item.reason || 'No reason provided'),
+          recommendation: String(item.recommendation || 'HOLD'),
+        }));
+
         // apply price range filter before sorting
-        const filteredByPrice = filterByPrice(mockResults, priceRange);
+        const filteredByPrice = filterByPrice(mappedResults, priceRange);
 
         // Sort by signal score
         filteredByPrice.sort((a, b) => b.signal_score - a.signal_score);
@@ -87,7 +72,7 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
     };
 
     runScreener();
-  }, [selectedMode]);
+  }, [selectedMode, priceRange.min, priceRange.max]);
 
   return (
     <div className="space-y-4">
