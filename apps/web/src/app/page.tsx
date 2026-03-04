@@ -1312,6 +1312,20 @@ function TopNavigation({
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
   const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
+  const activeLockGuards = [
+    coolingOff.active ? `Cooling-off ${coolingRemainingLabel}` : null,
+    deploymentGate.blocked ? 'Deployment gate blocked' : null,
+    riskConfigLocked ? 'Runtime risk config locked' : null,
+    systemKillSwitch.active ? 'Cloud kill-switch active' : null,
+    engineOffline ? `Engine offline >${engineHeartbeat.timeoutSeconds}s` : null,
+    killSwitchActive ? `Market kill-switch ${ihsgChangePct.toFixed(2)}%` : null,
+    !modelConsensus.pass ? 'Model consensus confusion' : null,
+    dataSanity.warning || dataSanity.lockActive ? 'Data sanity warning/lock' : null,
+  ].filter((value): value is string => value !== null);
+  const lockGuardTone =
+    activeLockGuards.length > 0
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
   const fallbackEmergencyActive = engineOffline && (marketIntelAdapter.degraded || degradedEndpointCount > 0);
   const fallbackStatusTone = fallbackEmergencyActive
     ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
@@ -1425,6 +1439,16 @@ function TopNavigation({
           {coolingOff.active
             ? `COOLING ${coolingRemainingLabel}`
             : `COOLING ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`}
+        </div>
+        <div
+          className={cn('text-[10px] font-mono border rounded px-2 py-1', lockGuardTone)}
+          title={
+            activeLockGuards.length > 0
+              ? `Active lock guards (${activeLockGuards.length}): ${activeLockGuards.join(' | ')}`
+              : 'No active lock guard'
+          }
+        >
+          {`LOCKS ${activeLockGuards.length}`}
         </div>
         <div className={cn('text-[10px] font-mono border rounded px-2 py-1', globalSentimentTone)} title="Global sentiment context from correlation feed">
           {`SENT ${globalSentimentLabel}`}
