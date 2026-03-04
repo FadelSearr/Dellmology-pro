@@ -1786,6 +1786,22 @@ function CenterPanel({
         ? 'Bull Continuation'
         : 'Bear Reversal';
   const combatAction = upsScore >= 50 ? 'BUY SETUP' : 'SELL SETUP';
+  const bidWalls = heatmapData.filter((item) => item.type === 'Bid').sort((first, second) => second.volume - first.volume);
+  const askWalls = heatmapData.filter((item) => item.type === 'Ask').sort((first, second) => second.volume - first.volume);
+  const topBidWall = bidWalls[0] || null;
+  const topAskWall = askWalls[0] || null;
+  const wallBias =
+    topBidWall && topAskWall
+      ? topBidWall.volume > topAskWall.volume * 1.1
+        ? 'BID WALL'
+        : topAskWall.volume > topBidWall.volume * 1.1
+          ? 'ASK WALL'
+          : 'BALANCED'
+      : topBidWall
+        ? 'BID WALL'
+        : topAskWall
+          ? 'ASK WALL'
+          : 'BALANCED';
 
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-950 relative overflow-hidden border-r border-slate-800">
@@ -1911,8 +1927,22 @@ function CenterPanel({
               </div>
             </div>
           ))}
-          <div className="absolute top-0 right-0 w-full text-center py-1 bg-slate-900/90 border-b border-slate-800 z-10">
-            <span className="text-[8px] text-slate-500 uppercase font-bold tracking-wider">DOM</span>
+          <div className="absolute top-0 right-0 w-full text-center py-1 bg-slate-900/90 border-b border-slate-800 z-10 space-y-0.5">
+            <span className="block text-[8px] text-slate-500 uppercase font-bold tracking-wider">DOM</span>
+            <span
+              className={cn(
+                'block text-[7px] font-mono uppercase',
+                wallBias === 'BID WALL' ? 'text-emerald-300' : wallBias === 'ASK WALL' ? 'text-rose-300' : 'text-amber-300',
+              )}
+            >
+              {wallBias}
+            </span>
+            <span className="block text-[7px] text-slate-500 font-mono">
+              {topBidWall ? `B ${Math.round(topBidWall.price)}` : 'B -'}
+            </span>
+            <span className="block text-[7px] text-slate-500 font-mono">
+              {topAskWall ? `A ${Math.round(topAskWall.price)}` : 'A -'}
+            </span>
           </div>
         </div>
       </div>
