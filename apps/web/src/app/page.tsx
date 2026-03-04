@@ -6663,10 +6663,13 @@ export default function Home() {
           className={cn('border-t px-4 py-2 text-[10px] font-mono flex items-center justify-between gap-3', combatRiskTone)}
           title={combatStripTitle}
         >
-          <span>
+          <span className="shrink-0">
             {combatCriticalLocks.length > 0
               ? `COMBAT RISK STRIP | LOCKS ${combatCriticalLocks.length} | ${combatCriticalLocks.join(' | ')}`
               : 'COMBAT RISK STRIP | ALL CORE GUARDS NORMAL'}
+          </span>
+          <span className="text-amber-300 truncate" title={`Combat bullets: ${combatMode.bullets.join(' | ')}`}>
+            {`CALLS ${combatMode.bullets.join(' • ')}`}
           </span>
           <span className="text-slate-500">{`UPS ${Math.round(upsScore)} | ${activeSymbol} | RESEARCH ONLY`}</span>
         </div>
