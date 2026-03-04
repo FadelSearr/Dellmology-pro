@@ -2035,29 +2035,21 @@ function RightSidebar({
       <SectionHeader title="Whale & Flow Engine" icon={Database} />
 
       <div className="flex-1 flex flex-col min-h-0 border-b border-slate-800">
-        <div className="grid grid-cols-4 gap-1 px-3 py-2 bg-slate-900 text-[10px] text-slate-500 font-bold uppercase tracking-wider border-b border-slate-800">
+        <div className="grid grid-cols-5 gap-1 px-3 py-2 bg-slate-900 text-[10px] text-slate-500 font-bold uppercase tracking-wider border-b border-slate-800">
           <span>Broker</span>
           <span className="text-center">Type</span>
+          <span className="text-center">Heat</span>
           <span className="text-right">Net Val</span>
           <span className="text-right">Cons</span>
         </div>
         <div className="overflow-y-auto custom-scrollbar flex-1">
           {brokers.map((broker, index) => (
-            <div key={index} className="grid grid-cols-4 gap-1 px-3 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors items-center">
+            <div key={index} className="grid grid-cols-5 gap-1 px-3 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors items-center">
               <div className="flex items-center space-x-2">
                 <span className={cn('w-2 h-2 rounded-full', broker.action === 'Buy' ? 'bg-emerald-500' : 'bg-rose-500')} />
                 <div className="flex flex-col">
                   <span className="font-bold text-slate-200 text-xs">{broker.broker}</span>
                   {broker.profile ? <span className="text-[9px] text-slate-500 font-mono">{broker.profile}</span> : null}
-                  <div className="mt-1 flex items-end gap-0.5 h-3" title="Daily heatmap">
-                    {broker.dailyHeatmap.slice(0, 5).map((value, heatIndex) => (
-                      <span
-                        key={`${broker.broker}-heat-${heatIndex}`}
-                        className={cn('w-1 rounded-sm', broker.action === 'Buy' ? 'bg-emerald-500/80' : 'bg-rose-500/80')}
-                        style={{ height: `${Math.max(2, Math.round((Math.max(0, Math.min(100, value)) / 100) * 12))}px` }}
-                      />
-                    ))}
-                  </div>
                 </div>
               </div>
               <div className="text-center">
@@ -2069,6 +2061,17 @@ function RightSidebar({
                 >
                   {broker.type}
                 </span>
+              </div>
+              <div className="flex justify-center" title="Daily heatmap">
+                <div className="flex items-end gap-0.5 h-3">
+                  {broker.dailyHeatmap.slice(0, 5).map((value, heatIndex) => (
+                    <span
+                      key={`${broker.broker}-heat-${heatIndex}`}
+                      className={cn('w-1 rounded-sm', broker.action === 'Buy' ? 'bg-emerald-500/80' : 'bg-rose-500/80')}
+                      style={{ height: `${Math.max(2, Math.round((Math.max(0, Math.min(100, value)) / 100) * 12))}px` }}
+                    />
+                  ))}
+                </div>
               </div>
               <div className={cn('text-right text-xs font-mono', broker.net >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
                 {formatCompactIDR(broker.net)}
