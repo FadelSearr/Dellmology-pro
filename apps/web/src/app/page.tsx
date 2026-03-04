@@ -897,6 +897,7 @@ function TopNavigation({
   mtfValidation,
   systemicRisk,
   portfolioBetaRisk,
+  volumeProfileDivergence,
   brokerCharacter,
   artificialLiquidity,
   spoofing,
@@ -928,6 +929,7 @@ function TopNavigation({
   mtfValidation: MultiTimeframeValidationState;
   systemicRisk: SystemicRisk;
   portfolioBetaRisk: PortfolioBetaRisk;
+  volumeProfileDivergence: VolumeProfileDivergenceState;
   brokerCharacter: BrokerCharacterState;
   artificialLiquidity: ArtificialLiquidityState;
   spoofing: SpoofingAlertState;
@@ -1126,6 +1128,18 @@ function TopNavigation({
           title={brokerCharacter.reason || `Risk ${brokerCharacter.riskCount}`}
         >
           {`BCP ${brokerCharacter.warning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            volumeProfileDivergence.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={
+            volumeProfileDivergence.reason ||
+            `UpperVol ${volumeProfileDivergence.highBandVolumeSharePct.toFixed(1)}% | Pos ${volumeProfileDivergence.upperRangePositionPct.toFixed(1)}%`
+          }
+        >
+          {`VPROF ${volumeProfileDivergence.warning ? 'WARN' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5195,6 +5209,7 @@ export default function Home() {
         mtfValidation={mtfValidation}
         systemicRisk={systemicRisk}
         portfolioBetaRisk={portfolioBetaRisk}
+        volumeProfileDivergence={volumeProfileDivergence}
         brokerCharacter={brokerCharacter}
         artificialLiquidity={artificialLiquidity}
         spoofing={spoofingAlert}
