@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Zap, TrendingUp, AlertCircle, Loader } from 'lucide-react';
 
+type ScreenerMode = 'DAYTRADE' | 'SWING' | 'CUSTOM';
+
 interface ScreenerResult {
   symbol: string;
   signal_score: number;
@@ -21,12 +23,30 @@ export const filterByPrice = (
   return results.filter((r) => r.price >= range.min && r.price <= range.max);
 };
 
-export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' }) => {
+export const AIScreener = ({
+  mode = 'DAYTRADE',
+  customPriceRange,
+  hideInternalControls = false,
+}: {
+  mode?: ScreenerMode;
+  customPriceRange?: { min: number; max: number };
+  hideInternalControls?: boolean;
+}) => {
   const [results, setResults] = useState<ScreenerResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedMode, setSelectedMode] = useState(mode);
+  const [selectedMode, setSelectedMode] = useState<ScreenerMode>(mode);
   const [priceRange, setPriceRange] = useState({ min: 100, max: 500 });
+
+  useEffect(() => {
+    setSelectedMode(mode);
+  }, [mode]);
+
+  useEffect(() => {
+    if (customPriceRange) {
+      setPriceRange(customPriceRange);
+    }
+  }, [customPriceRange?.min, customPriceRange?.max]);
 
   useEffect(() => {
     const runScreener = async () => {
@@ -34,11 +54,16 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
         setLoading(true);
         setError(null);
 
-        const response = await fetch('/api/advanced-screener', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: selectedMode, minScore: 0.6 }),
-        });
+        const response =
+          selectedMode === 'CUSTOM'
+            ? await fetch(
+                `/api/screener/custom?min_price=${priceRange.min}&max_price=${priceRange.max}&days=7&minutes=30&limit=15`,
+              )
+            : await fetch('/api/advanced-screener', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: selectedMode, minScore: 0.6 }),
+              });
 
         if (!response.ok) {
           let message = 'Failed to run advanced screener';
@@ -59,16 +84,28 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
         }
 
         const payload = await response.json();
-        const mappedResults: ScreenerResult[] = (payload?.results || []).map((item: any) => ({
-          symbol: String(item.symbol || ''),
-          signal_score: Number(item.score || 0),
-          haka_ratio: Number(item.haka_ratio || 0) * 100,
-          volatility: Number(item.volatility_percent || 0),
-          consistency: Number(item.flow_score || 0),
-          price: Number(item.current_price || 0),
-          reason: String(item.reason || 'No reason provided'),
-          recommendation: String(item.recommendation || 'HOLD'),
-        }));
+        const mappedResults: ScreenerResult[] =
+          selectedMode === 'CUSTOM'
+            ? (payload?.data || []).map((item: any) => ({
+                symbol: String(item.symbol || ''),
+                signal_score: Number(item.score || 0),
+                haka_ratio: 0,
+                volatility: Math.abs(Number(item.change_pct || 0)),
+                consistency: Number(item.total_net_accumulation || 0) > 0 ? 65 : 35,
+                price: Number(item.last_price || 0),
+                reason: String(item.status || 'Custom range candidate'),
+                recommendation: Number(item.total_net_accumulation || 0) > 0 ? 'WATCH BUY' : 'WAIT',
+              }))
+            : (payload?.results || []).map((item: any) => ({
+                symbol: String(item.symbol || ''),
+                signal_score: Number(item.score || 0),
+                haka_ratio: Number(item.haka_ratio || 0) * 100,
+                volatility: Number(item.volatility_percent || 0),
+                consistency: Number(item.flow_score || 0),
+                price: Number(item.current_price || 0),
+                reason: String(item.reason || 'No reason provided'),
+                recommendation: String(item.recommendation || 'HOLD'),
+              }));
 
         // apply price range filter before sorting
         const filteredByPrice = filterByPrice(mappedResults, priceRange);
@@ -90,56 +127,57 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
 
   return (
     <div className="space-y-4">
-      {/* Header & Controls */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-          <Zap className="text-yellow-400" size={20} />
-          AI Screener
-        </h3>
+      {!hideInternalControls && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Zap className="text-yellow-400" size={20} />
+            AI Screener
+          </h3>
 
-        {/* Mode Selection */}
-        <div className="grid grid-cols-2 gap-2">
-          {['DAYTRADE', 'SWING'].map((m) => (
-            <button
-              key={m}
-              onClick={() => setSelectedMode(m as 'DAYTRADE' | 'SWING')}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                selectedMode === m
-                  ? 'bg-cyan-500 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              {m === 'DAYTRADE' ? '🚀 Daytrade Mode' : '📋 Swing Mode'}
-            </button>
-          ))}
-        </div>
+          {/* Mode Selection */}
+          <div className="grid grid-cols-3 gap-2">
+            {['DAYTRADE', 'SWING', 'CUSTOM'].map((m) => (
+              <button
+                key={m}
+                onClick={() => setSelectedMode(m as ScreenerMode)}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                  selectedMode === m
+                    ? 'bg-cyan-500 text-white'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                {m === 'DAYTRADE' ? '🚀 Daytrade' : m === 'SWING' ? '📋 Swing' : '🎯 Custom'}
+              </button>
+            ))}
+          </div>
 
-        {/* Price Range Filter */}
-        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
-          <label className="text-xs text-gray-400 block mb-2">Price Range (Rp)</label>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <input
-                type="number"
-                value={priceRange.min}
-                onChange={(e) => setPriceRange({ ...priceRange, min: parseInt(e.target.value) })}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm"
-                placeholder="Min"
-              />
-            </div>
-            <div className="text-gray-400 text-sm flex items-center">to</div>
-            <div className="flex-1">
-              <input
-                type="number"
-                value={priceRange.max}
-                onChange={(e) => setPriceRange({ ...priceRange, max: parseInt(e.target.value) })}
-                className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm"
-                placeholder="Max"
-              />
+          {/* Price Range Filter */}
+          <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+            <label className="text-xs text-gray-400 block mb-2">Price Range (Rp)</label>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <input
+                  type="number"
+                  value={priceRange.min}
+                  onChange={(e) => setPriceRange({ ...priceRange, min: parseInt(e.target.value) || 0 })}
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm"
+                  placeholder="Min"
+                />
+              </div>
+              <div className="text-gray-400 text-sm flex items-center">to</div>
+              <div className="flex-1">
+                <input
+                  type="number"
+                  value={priceRange.max}
+                  onChange={(e) => setPriceRange({ ...priceRange, max: parseInt(e.target.value) || 0 })}
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm"
+                  placeholder="Max"
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Results */}
       {loading ? (
@@ -238,7 +276,9 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
         <p className="mb-2">
           {selectedMode === 'DAYTRADE'
             ? '🚀 Daytrade: High volatility + strong HAKA for quick scalping (1-4 hours)'
-            : '📋 Swing: Whale accumulation + solid technicals for 2-5 day holds'}
+            : selectedMode === 'SWING'
+              ? '📋 Swing: Whale accumulation + solid technicals for 2-5 day holds'
+              : '🎯 Custom: Dynamic range screen with broker accumulation context'}
         </p>
         <p className="text-gray-500">💡 Score 75+ = Strong Signal | 50-75+ = Monitor | &lt;50 = Skip</p>
       </div>
