@@ -399,6 +399,10 @@ interface NewsImpactState {
   riskLabel: 'LOW' | 'MEDIUM' | 'HIGH';
   stressScore: number;
   penaltyUps: number;
+  retailSentimentScore: number;
+  whaleFlowBias: number;
+  divergenceWarning: boolean;
+  divergenceReason: string | null;
   redFlags: string[];
   checkedAt: string | null;
 }
@@ -715,6 +719,17 @@ function applyWashSaleConsensusGuard(consensus: ModelConsensus, washSaleWarning:
     pass: false,
     status: 'CONFUSION',
     message: 'WASH-SALE RISK - BUY DISABLED',
+  };
+}
+
+function applyRetailSentimentConsensusGuard(consensus: ModelConsensus, retailDivergenceWarning: boolean): ModelConsensus {
+  if (!retailDivergenceWarning) return consensus;
+  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
+  return {
+    ...consensus,
+    pass: false,
+    status: 'CONFUSION',
+    message: 'RETAIL DIVERGENCE - BUY DISABLED',
   };
 }
 
@@ -1449,6 +1464,18 @@ function RightSidebar({
           <div className="text-[9px] text-slate-500 font-mono mt-1">
             {`Stress ${newsImpact.stressScore.toFixed(1)} | UPS-${newsImpact.penaltyUps.toFixed(0)} | ${newsImpact.riskLabel}`}
           </div>
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              newsImpact.divergenceWarning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {newsImpact.divergenceWarning ? 'Retail Sentiment Divergence' : 'Retail Sentiment Aligned'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Retail ${newsImpact.retailSentimentScore.toFixed(1)} | WhaleBias ${newsImpact.whaleFlowBias.toFixed(1)}`}
+          </div>
+          {newsImpact.divergenceReason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{newsImpact.divergenceReason}</div> : null}
           {newsImpact.redFlags.length > 0 ? <div className="text-[9px] text-slate-500 font-mono mt-1">{newsImpact.redFlags.slice(0, 2).join(' | ')}</div> : null}
           <div
             className={cn(
@@ -2106,6 +2133,10 @@ export default function Home() {
     riskLabel: 'LOW',
     stressScore: 0,
     penaltyUps: 0,
+    retailSentimentScore: 0,
+    whaleFlowBias: 0,
+    divergenceWarning: false,
+    divergenceReason: null,
     redFlags: [],
     checkedAt: null,
   });
@@ -2275,6 +2306,10 @@ export default function Home() {
       stress_score?: number;
       penalty_ups?: number;
       risk_label?: 'LOW' | 'MEDIUM' | 'HIGH';
+      retail_sentiment_score?: number;
+      whale_flow_bias?: number;
+      divergence_warning?: boolean;
+      divergence_reason?: string | null;
       red_flags?: string[];
       checked_at?: string;
     } | null;
@@ -2454,6 +2489,10 @@ export default function Home() {
     const newsStressScore = Number(newsOverlay?.stress_score || 0);
     const newsPenaltyUps = Math.max(0, Number(newsOverlay?.penalty_ups || 0));
     const newsRiskLabel = newsOverlay?.risk_label || 'LOW';
+    const retailSentimentScore = Math.max(0, Number(newsOverlay?.retail_sentiment_score || 0));
+    const whaleFlowBias = Number(newsOverlay?.whale_flow_bias || 0);
+    const retailDivergenceWarning = Boolean(newsOverlay?.divergence_warning);
+    const retailDivergenceReason = newsOverlay?.divergence_reason || null;
     const newsRedFlags = (newsOverlay?.red_flags || []).filter((flag): flag is string => typeof flag === 'string' && flag.length > 0);
     const newsImpactWarning = newsRiskLabel === 'HIGH' || newsPenaltyUps >= 12;
     setNewsImpact({
@@ -2461,6 +2500,10 @@ export default function Home() {
       riskLabel: newsRiskLabel,
       stressScore: newsStressScore,
       penaltyUps: newsPenaltyUps,
+      retailSentimentScore,
+      whaleFlowBias,
+      divergenceWarning: retailDivergenceWarning,
+      divergenceReason: retailDivergenceReason,
       redFlags: newsRedFlags,
       checkedAt: newsOverlay?.checked_at || null,
     });
@@ -2776,15 +2819,18 @@ export default function Home() {
         : global?.global_sentiment === 'BEARISH'
           ? 'SELL'
           : 'NEUTRAL';
-    const preliminaryConsensus = applyWashSaleConsensusGuard(
-      applyIcebergConsensusGuard(
-        applyMtfConsensusGuard(
-          applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote), rocCritical),
-          mtfWarning,
+    const preliminaryConsensus = applyRetailSentimentConsensusGuard(
+      applyWashSaleConsensusGuard(
+        applyIcebergConsensusGuard(
+          applyMtfConsensusGuard(
+            applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote), rocCritical),
+            mtfWarning,
+          ),
+          icebergWarning,
         ),
-        icebergWarning,
+        washSaleWarning,
       ),
-      washSaleWarning,
+      retailDivergenceWarning,
     );
     setModelConsensus(preliminaryConsensus);
     const combatActive = volClass.toUpperCase() === 'HIGH' || volPct >= COMBAT_MODE_VOLATILITY_PCT;
@@ -2814,13 +2860,14 @@ export default function Home() {
         `Data Sanity: ${sanityWarning ? 'DATA CONTAMINATED' : 'PASS'}\n` +
         `Champion-Challenger: ${championDriftWarning ? 'DRIFT WARNING' : 'STABLE'}\n` +
         `News Overlay: ${newsImpactWarning ? `RISK (${newsRiskLabel}, UPS-${newsPenaltyUps.toFixed(0)})` : 'NORMAL'}\n` +
+        `Retail Divergence: ${retailDivergenceWarning ? 'WARNING' : 'NORMAL'}\n` +
         `MTF Validation: ${mtfWarning ? 'CONFLICT (15m vs 1h)' : 'ALIGNED'}\n` +
         `RoC Kill-Switch: ${rocCritical ? 'CRITICAL: VOLATILITY SPIKE' : 'Normal'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -2842,15 +2889,18 @@ export default function Home() {
         const narrativeBody = (await narrativeResponse.json()) as { narrative?: string };
         const extracted = extractAdversarialNarrative(narrativeBody.narrative || '');
         const sentimentVote = sentimentVoteFromNarrative(extracted.bullish, extracted.bearish, global?.global_sentiment);
-        const finalConsensus = applyWashSaleConsensusGuard(
-          applyIcebergConsensusGuard(
-            applyMtfConsensusGuard(
-              applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
-              mtfWarning,
+        const finalConsensus = applyRetailSentimentConsensusGuard(
+          applyWashSaleConsensusGuard(
+            applyIcebergConsensusGuard(
+              applyMtfConsensusGuard(
+                applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
+                mtfWarning,
+              ),
+              icebergWarning,
             ),
-            icebergWarning,
+            washSaleWarning,
           ),
-          washSaleWarning,
+          retailDivergenceWarning,
         );
         setModelConsensus(finalConsensus);
         setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
@@ -2867,15 +2917,18 @@ export default function Home() {
             ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
             : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
         const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-        const finalConsensus = applyWashSaleConsensusGuard(
-          applyIcebergConsensusGuard(
-            applyMtfConsensusGuard(
-              applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
-              mtfWarning,
+        const finalConsensus = applyRetailSentimentConsensusGuard(
+          applyWashSaleConsensusGuard(
+            applyIcebergConsensusGuard(
+              applyMtfConsensusGuard(
+                applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
+                mtfWarning,
+              ),
+              icebergWarning,
             ),
-            icebergWarning,
+            washSaleWarning,
           ),
-          washSaleWarning,
+          retailDivergenceWarning,
         );
         setModelConsensus(finalConsensus);
         setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
@@ -2893,15 +2946,18 @@ export default function Home() {
           ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
           : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
       const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-      const finalConsensus = applyWashSaleConsensusGuard(
-        applyIcebergConsensusGuard(
-          applyMtfConsensusGuard(
-            applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
-            mtfWarning,
+      const finalConsensus = applyRetailSentimentConsensusGuard(
+        applyWashSaleConsensusGuard(
+          applyIcebergConsensusGuard(
+            applyMtfConsensusGuard(
+              applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
+              mtfWarning,
+            ),
+            icebergWarning,
           ),
-          icebergWarning,
+          washSaleWarning,
         ),
-        washSaleWarning,
+        retailDivergenceWarning,
       );
       setModelConsensus(finalConsensus);
       setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
@@ -3267,6 +3323,14 @@ export default function Home() {
       return;
     }
 
+    if (newsImpact.divergenceWarning && modelConsensus.status === 'CONSENSUS_BULL') {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: retail divergence (Retail ${newsImpact.retailSentimentScore.toFixed(1)} vs Whale ${newsImpact.whaleFlowBias.toFixed(1)})`,
+      });
+      return;
+    }
+
     if (rocKillSwitch.active && (modelConsensus.status === 'CONSENSUS_BULL' || upsScore >= minUpsForLong)) {
       setActionState({
         busy: false,
@@ -3419,6 +3483,10 @@ export default function Home() {
         risk_label: newsImpact.riskLabel,
         stress_score: newsImpact.stressScore,
         penalty_ups: newsImpact.penaltyUps,
+        retail_sentiment_score: newsImpact.retailSentimentScore,
+        whale_flow_bias: newsImpact.whaleFlowBias,
+        divergence_warning: newsImpact.divergenceWarning,
+        divergence_reason: newsImpact.divergenceReason,
         red_flags: newsImpact.redFlags,
         checked_at: newsImpact.checkedAt,
       },
