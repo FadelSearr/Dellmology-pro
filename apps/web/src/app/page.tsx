@@ -882,6 +882,7 @@ function TopNavigation({
   applySymbol,
   coolingOffActive,
   combatMode,
+  incompleteData,
   infraStatus,
   globalData,
 }: {
@@ -890,6 +891,7 @@ function TopNavigation({
   applySymbol: () => void;
   coolingOffActive: boolean;
   combatMode: CombatModeState;
+  incompleteData: IncompleteDataState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -958,6 +960,15 @@ function TopNavigation({
       </div>
 
       <div className="flex items-center space-x-4 border-l border-slate-800 pl-4">
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            incompleteData.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30',
+          )}
+          title={incompleteData.reason || 'Stream continuity healthy'}
+        >
+          {incompleteData.warning ? 'INCOMPLETE DATA' : 'DATA STREAM OK'}
+        </div>
         <div
           className={cn(
             'text-[10px] font-mono border rounded px-2 py-1',
@@ -4928,6 +4939,7 @@ export default function Home() {
         applySymbol={applySymbol}
         coolingOffActive={coolingOff.active}
         combatMode={combatMode}
+        incompleteData={incompleteData}
         infraStatus={infraStatus}
         globalData={globalData}
       />
