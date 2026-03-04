@@ -58,6 +58,7 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
   const [loading, setLoading] = useState(true);
   const [isExplaining, setIsExplaining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [trainingStatus, setTrainingStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const lastAlertRef = useRef<{ symbol: string; signal: string; time: number } | null>(null);
 
   useEffect(() => {
@@ -242,11 +243,31 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
           </button>
           <button
             onClick={() => {
+              setTrainingStatus(null);
               fetch(`/api/cnn`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'train', symbol }),
-              }).then(() => alert('Training started')).catch(console.error);
+              })
+                .then(async (response) => {
+                  if (!response.ok) {
+                    let message = 'Training failed';
+                    try {
+                      const body = (await response.json()) as { error?: string };
+                      if (body?.error) {
+                        message = body.error;
+                      }
+                    } catch {
+                      message = 'Training failed';
+                    }
+                    throw new Error(message);
+                  }
+                  setTrainingStatus({ type: 'success', text: 'Training started' });
+                })
+                .catch((e) => {
+                  console.error(e);
+                  setTrainingStatus({ type: 'error', text: 'Training failed' });
+                });
             }}
             className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
           >
@@ -294,6 +315,18 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
           </button>
         </div>
       </div>
+
+      {trainingStatus && (
+        <div
+          className={`rounded border px-3 py-2 text-xs ${
+            trainingStatus.type === 'success'
+              ? 'border-green-700 bg-green-900/20 text-green-300'
+              : 'border-red-700 bg-red-900/20 text-red-300'
+          }`}
+        >
+          {trainingStatus.text}
+        </div>
+      )}
 
       {/* UPS Component Breakdown */}
       <div className="grid grid-cols-4 gap-3">
