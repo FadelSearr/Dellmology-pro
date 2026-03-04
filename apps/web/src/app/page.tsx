@@ -1109,19 +1109,60 @@ function sentimentVoteFromNarrative(
 }
 
 function buildCombatBullets(consensus: ModelConsensus, coolingActive: boolean): [string, string, string] {
-  if (coolingActive) {
-    return ['COOLING OFF ACTIVE', 'RISK FIRST ALWAYS', 'WAIT NEXT CANDLE'];
-  }
+  const defaultBullets: [string, string, string] = coolingActive
+    ? ['COOLING OFF ACTIVE', 'RISK FIRST ALWAYS', 'WAIT NEXT CANDLE']
+    : !consensus.pass
+      ? ['MARKET CONFUSION NOW', 'STAND ASIDE FIRST', 'WAIT CLEAR VOTE']
+      : consensus.status === 'CONSENSUS_BULL'
+        ? ['BUY PULLBACK ONLY', 'FOLLOW WHALE FLOW', 'USE TIGHT RISK']
+        : ['WHALE EXIT ALERT', 'REDUCE RISK FAST', 'NO FOMO ENTRY'];
 
-  if (!consensus.pass) {
-    return ['MARKET CONFUSION NOW', 'STAND ASIDE FIRST', 'WAIT CLEAR VOTE'];
-  }
+  return defaultBullets;
+}
 
-  if (consensus.status === 'CONSENSUS_BULL') {
-    return ['BUY PULLBACK ONLY', 'FOLLOW WHALE FLOW', 'USE TIGHT RISK'];
+function toThreeWordBullet(input: string) {
+  const words = input
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 3);
+  if (words.length === 0) {
+    return '';
   }
+  return words.join(' ');
+}
 
-  return ['WHALE EXIT ALERT', 'REDUCE RISK FAST', 'NO FOMO ENTRY'];
+function buildCombatNarrativeBullets(narrative: string) {
+  const text = (narrative || '').toLowerCase();
+  const candidates: string[] = [];
+
+  if (text.includes('cooling-off') || text.includes('cooling off')) candidates.push('COOLING OFF ACTIVE');
+  if (text.includes('engine offline')) candidates.push('ENGINE OFFLINE ALERT');
+  if (text.includes('kill-switch') || text.includes('system lock')) candidates.push('KILL SWITCH ACTIVE');
+  if (text.includes('market confusion') || text.includes('konsensus')) candidates.push('MARKET CONFUSION STAND');
+  if (text.includes('data contaminated') || text.includes('data sanity')) candidates.push('DATA SANITY LOCK');
+  if (text.includes('spoofing')) candidates.push('SPOOFING RISK ALERT');
+  if (text.includes('wash sale')) candidates.push('WASH SALE RISK');
+  if (text.includes('exit whale')) candidates.push('WHALE EXIT ALERT');
+  if (text.includes('buy')) candidates.push('BUY PULLBACK ONLY');
+  if (text.includes('sell')) candidates.push('REDUCE RISK FAST');
+
+  const normalized = Array.from(new Set(candidates.map((item) => toThreeWordBullet(item)).filter(Boolean)));
+  return normalized.slice(0, 3);
+}
+
+function buildCombatBulletsFromNarrative(consensus: ModelConsensus, coolingActive: boolean, narrative: string): [string, string, string] {
+  const base = buildCombatBullets(consensus, coolingActive);
+  const narrativeBullets = buildCombatNarrativeBullets(narrative);
+  const merged = [...narrativeBullets, ...base.map((item) => toThreeWordBullet(item))].filter(Boolean);
+  const unique = Array.from(new Set(merged));
+
+  return [
+    unique[0] || base[0],
+    unique[1] || base[1],
+    unique[2] || base[2],
+  ];
 }
 
 function buildActiveLockGuards(params: {
@@ -4930,47 +4971,48 @@ export default function Home() {
     );
     setModelConsensus(preliminaryConsensus);
     const combatActive = volClass.toUpperCase() === 'HIGH' || volPct >= COMBAT_MODE_VOLATILITY_PCT;
+    const narrativeDraft =
+      `System: Analyzing ${activeSymbol} market structure...\n\n` +
+      `AI: ${signalLabel(nextUps, minUpsForLong).toUpperCase()} BIAS DETECTED.\n` +
+      `Price Move (${timeframe}): ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | Volatility: ${volClass}\n` +
+      `Risk Gate: ${riskGateLabel}\n` +
+      `Rule Engine: ${runtimeRuleEngineMode} (${runtimeRuleEngineVersion})\n` +
+      `System Switch: ${systemKillSwitch.active ? `LOCK (${systemKillSwitch.reason || 'inactive'})` : 'ACTIVE'}\n` +
+      `Engine Heartbeat: ${workerHeartbeatLocked ? `OFFLINE >${heartbeatTimeoutSeconds}s (${workerLastSeenSeconds ?? '-'}s)` : 'ONLINE'}\n` +
+      `Deploy Gate: ${deployGate?.blocked ? 'BLOCKED' : 'PASS'}\n` +
+      `Flow Integrity: ${artificialLiquidityWarning ? 'Artificial Liquidity Warning' : 'Healthy'}\n` +
+      `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
+      `Volume Profile: ${lateEntryWarning ? 'Late Entry Warning' : 'Normal'}\n` +
+      `Order Lifetime: ${spoofingWarning ? 'Spoofing Alert' : 'Stable'}\n` +
+      `Exit Whale: ${exitWhaleSignal} (${exitWhaleConfidence.toFixed(0)})\n` +
+      `Wash Sale: ${washSaleWarning ? `RISK (${washSaleScore.toFixed(1)})` : `Normal (${washSaleScore.toFixed(1)})`}\n` +
+      `Iceberg Risk: ${icebergWarning ? `HIGH (${Math.round(Number(icebergSignal?.score || 0))})` : 'Normal'}\n` +
+      `Data Integrity: ${incompleteDataWarning ? 'Incomplete Data' : 'Complete'}\n` +
+      `Cross-Check: ${crossCheckWarning ? 'LOCK' : 'OK'}\n` +
+      `Data Sanity: ${sanityWarning ? 'DATA CONTAMINATED' : 'PASS'}\n` +
+      `Golden Record: ${goldenRecordRaw?.is_system_safe === false ? 'FAILED' : 'PASS'}\n` +
+      `Champion-Challenger: ${championDriftWarning ? 'DRIFT WARNING' : 'STABLE'}\n` +
+      `News Overlay: ${newsImpactWarning ? `RISK (${newsRiskLabel}, UPS-${newsPenaltyUps.toFixed(0)})` : 'NORMAL'}\n` +
+      `Retail Divergence: ${retailDivergenceWarning ? 'WARNING' : 'NORMAL'}\n` +
+      `MTF Validation: ${mtfWarning ? 'CONFLICT (15m vs 1h)' : 'ALIGNED'}\n` +
+      `RoC Kill-Switch: ${rocCritical ? 'CRITICAL: VOLATILITY SPIKE' : 'Normal'}\n` +
+      `Portfolio Beta: ${portfolioBetaEstimateLocal.toFixed(2)} / ${runtimeSystemicRiskBetaThreshold.toFixed(2)} ${portfolioSystemicRiskHighLocal ? '(Systemic Risk High)' : '(Normal)'}\n` +
+      `Consensus: ${preliminaryConsensus.message}\n` +
+      `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
+      `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
+      `Model Confidence: ${confLabel} (${confidenceAccuracy.toFixed(1)}%) | Hist ${nextConfidenceTracking.evaluated > 0 ? nextConfidenceTracking.accuracyPct.toFixed(1) : '-'}% (${nextConfidenceTracking.wins}/${nextConfidenceTracking.losses})\n` +
+      `Disclaimer: ${PERSONAL_RESEARCH_ONLY_DISCLAIMER}\n\n` +
+      `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : workerHeartbeatLocked ? `Engine offline >${heartbeatTimeoutSeconds}s. Hentikan alert/eksekusi dan verifikasi worker heartbeat.` : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : nextConfidenceTracking.warning ? 'AI confidence LOW. Re-calibration required sebelum entry agresif.' : portfolioSystemicRiskHighLocal ? `Systemic Risk High: Portfolio beta ${portfolioBetaEstimateLocal.toFixed(2)} melebihi threshold ${runtimeSystemicRiskBetaThreshold.toFixed(2)}. Kurangi eksposur.` : systemicRiskHighLocal ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.` : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : exitWhaleWarning ? 'Exit whale / liquidity hunt terdeteksi. Hindari entry sampai tekanan distribusi mereda.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`;
+
     setCombatMode({
       active: combatActive,
       reason: combatActive
         ? `Volatility ${volClass} (${volPct.toFixed(2)}%) >= ${COMBAT_MODE_VOLATILITY_PCT.toFixed(2)}%`
         : `Volatility ${volClass} (${volPct.toFixed(2)}%)`,
-      bullets: buildCombatBullets(preliminaryConsensus, coolingActive),
+      bullets: buildCombatBulletsFromNarrative(preliminaryConsensus, coolingActive, narrativeDraft),
     });
 
-    setNarrative(
-      `System: Analyzing ${activeSymbol} market structure...\n\n` +
-        `AI: ${signalLabel(nextUps, minUpsForLong).toUpperCase()} BIAS DETECTED.\n` +
-        `Price Move (${timeframe}): ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | Volatility: ${volClass}\n` +
-        `Risk Gate: ${riskGateLabel}\n` +
-        `Rule Engine: ${runtimeRuleEngineMode} (${runtimeRuleEngineVersion})\n` +
-        `System Switch: ${systemKillSwitch.active ? `LOCK (${systemKillSwitch.reason || 'inactive'})` : 'ACTIVE'}\n` +
-        `Engine Heartbeat: ${workerHeartbeatLocked ? `OFFLINE >${heartbeatTimeoutSeconds}s (${workerLastSeenSeconds ?? '-'}s)` : 'ONLINE'}\n` +
-        `Deploy Gate: ${deployGate?.blocked ? 'BLOCKED' : 'PASS'}\n` +
-        `Flow Integrity: ${artificialLiquidityWarning ? 'Artificial Liquidity Warning' : 'Healthy'}\n` +
-        `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
-        `Volume Profile: ${lateEntryWarning ? 'Late Entry Warning' : 'Normal'}\n` +
-        `Order Lifetime: ${spoofingWarning ? 'Spoofing Alert' : 'Stable'}\n` +
-        `Exit Whale: ${exitWhaleSignal} (${exitWhaleConfidence.toFixed(0)})\n` +
-        `Wash Sale: ${washSaleWarning ? `RISK (${washSaleScore.toFixed(1)})` : `Normal (${washSaleScore.toFixed(1)})`}\n` +
-        `Iceberg Risk: ${icebergWarning ? `HIGH (${Math.round(Number(icebergSignal?.score || 0))})` : 'Normal'}\n` +
-        `Data Integrity: ${incompleteDataWarning ? 'Incomplete Data' : 'Complete'}\n` +
-        `Cross-Check: ${crossCheckWarning ? 'LOCK' : 'OK'}\n` +
-        `Data Sanity: ${sanityWarning ? 'DATA CONTAMINATED' : 'PASS'}\n` +
-        `Golden Record: ${goldenRecordRaw?.is_system_safe === false ? 'FAILED' : 'PASS'}\n` +
-        `Champion-Challenger: ${championDriftWarning ? 'DRIFT WARNING' : 'STABLE'}\n` +
-        `News Overlay: ${newsImpactWarning ? `RISK (${newsRiskLabel}, UPS-${newsPenaltyUps.toFixed(0)})` : 'NORMAL'}\n` +
-        `Retail Divergence: ${retailDivergenceWarning ? 'WARNING' : 'NORMAL'}\n` +
-        `MTF Validation: ${mtfWarning ? 'CONFLICT (15m vs 1h)' : 'ALIGNED'}\n` +
-        `RoC Kill-Switch: ${rocCritical ? 'CRITICAL: VOLATILITY SPIKE' : 'Normal'}\n` +
-        `Portfolio Beta: ${portfolioBetaEstimateLocal.toFixed(2)} / ${runtimeSystemicRiskBetaThreshold.toFixed(2)} ${portfolioSystemicRiskHighLocal ? '(Systemic Risk High)' : '(Normal)'}\n` +
-        `Consensus: ${preliminaryConsensus.message}\n` +
-        `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
-        `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
-        `Model Confidence: ${confLabel} (${confidenceAccuracy.toFixed(1)}%) | Hist ${nextConfidenceTracking.evaluated > 0 ? nextConfidenceTracking.accuracyPct.toFixed(1) : '-'}% (${nextConfidenceTracking.wins}/${nextConfidenceTracking.losses})\n` +
-        `Disclaimer: ${PERSONAL_RESEARCH_ONLY_DISCLAIMER}\n\n` +
-        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : workerHeartbeatLocked ? `Engine offline >${heartbeatTimeoutSeconds}s. Hentikan alert/eksekusi dan verifikasi worker heartbeat.` : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : nextConfidenceTracking.warning ? 'AI confidence LOW. Re-calibration required sebelum entry agresif.' : portfolioSystemicRiskHighLocal ? `Systemic Risk High: Portfolio beta ${portfolioBetaEstimateLocal.toFixed(2)} melebihi threshold ${runtimeSystemicRiskBetaThreshold.toFixed(2)}. Kurangi eksposur.` : systemicRiskHighLocal ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.` : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : exitWhaleWarning ? 'Exit whale / liquidity hunt terdeteksi. Hindari entry sampai tekanan distribusi mereda.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
-    );
+    setNarrative(narrativeDraft);
 
     try {
       const narrativeResponse = await fetch('/api/narrative', {
@@ -5003,7 +5045,7 @@ export default function Home() {
           },
         );
         setModelConsensus(finalConsensus);
-        setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
+        setCombatMode((prev) => ({ ...prev, bullets: buildCombatBulletsFromNarrative(finalConsensus, coolingActive, `${extracted.bullish} ${extracted.bearish}`) }));
         setAdversarialNarrative({
           bullish: extracted.bullish,
           bearish: extracted.bearish,
@@ -5031,7 +5073,7 @@ export default function Home() {
           },
         );
         setModelConsensus(finalConsensus);
-        setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
+        setCombatMode((prev) => ({ ...prev, bullets: buildCombatBulletsFromNarrative(finalConsensus, coolingActive, `${fallbackBullish} ${fallbackBearish}`) }));
         setAdversarialNarrative({
           bullish: fallbackBullish,
           bearish: fallbackBearish,
@@ -5060,7 +5102,7 @@ export default function Home() {
         },
       );
       setModelConsensus(finalConsensus);
-      setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
+      setCombatMode((prev) => ({ ...prev, bullets: buildCombatBulletsFromNarrative(finalConsensus, coolingActive, `${fallbackBullish} ${fallbackBearish}`) }));
       setAdversarialNarrative({
         bullish: fallbackBullish,
         bearish: fallbackBearish,
