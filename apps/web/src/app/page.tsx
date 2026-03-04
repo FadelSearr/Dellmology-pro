@@ -895,6 +895,8 @@ function TopNavigation({
   championChallenger,
   newsImpact,
   mtfValidation,
+  systemicRisk,
+  portfolioBetaRisk,
   infraStatus,
   globalData,
 }: {
@@ -916,6 +918,8 @@ function TopNavigation({
   championChallenger: ChampionChallengerState;
   newsImpact: NewsImpactState;
   mtfValidation: MultiTimeframeValidationState;
+  systemicRisk: SystemicRisk;
+  portfolioBetaRisk: PortfolioBetaRisk;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1086,6 +1090,17 @@ function TopNavigation({
           title={mtfValidation.reason || `${mtfValidation.shortTimeframe}:${mtfValidation.shortVote} vs ${mtfValidation.highTimeframe}:${mtfValidation.highVote}`}
         >
           {`MTF ${mtfValidation.warning ? 'CONFLICT' : 'ALIGNED'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            systemicRisk.high || portfolioBetaRisk.high
+              ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+              : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={`Beta ${systemicRisk.betaEstimate.toFixed(2)}/${systemicRisk.threshold.toFixed(2)} | Portfolio ${portfolioBetaRisk.betaEstimate.toFixed(2)}/${portfolioBetaRisk.threshold.toFixed(2)} (${portfolioBetaRisk.contributingSymbols} symbols)`}
+        >
+          {`BETA ${portfolioBetaRisk.high ? 'PORT HIGH' : systemicRisk.high ? 'HIGH' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5090,6 +5105,8 @@ export default function Home() {
         championChallenger={championChallenger}
         newsImpact={newsImpact}
         mtfValidation={mtfValidation}
+        systemicRisk={systemicRisk}
+        portfolioBetaRisk={portfolioBetaRisk}
         infraStatus={infraStatus}
         globalData={globalData}
       />
