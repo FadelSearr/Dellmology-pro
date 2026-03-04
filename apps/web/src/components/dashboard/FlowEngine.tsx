@@ -36,6 +36,14 @@ interface NegotiatedMonitorData {
     nego_count: number;
     cross_count: number;
   };
+  items?: Array<{
+    timestamp?: string;
+    symbol?: string;
+    price?: number;
+    volume?: number;
+    trade_type?: string;
+    notional?: number;
+  }>;
 }
 
 const EMPTY_NEGOTIATED_SUMMARY = {
@@ -56,6 +64,14 @@ function normalizeNegotiatedPayload(payload: unknown): NegotiatedMonitorData | n
       nego_count?: number;
       cross_count?: number;
     };
+    items?: Array<{
+      timestamp?: string;
+      symbol?: string;
+      price?: number;
+      volume?: number;
+      trade_type?: string;
+      notional?: number;
+    }>;
   };
 
   return {
@@ -66,6 +82,16 @@ function normalizeNegotiatedPayload(payload: unknown): NegotiatedMonitorData | n
       nego_count: Number(source.summary?.nego_count || 0),
       cross_count: Number(source.summary?.cross_count || 0),
     },
+    items: Array.isArray(source.items)
+      ? source.items.slice(0, 6).map((item) => ({
+          timestamp: item?.timestamp,
+          symbol: item?.symbol,
+          price: Number(item?.price || 0),
+          volume: Number(item?.volume || 0),
+          trade_type: String(item?.trade_type || ''),
+          notional: Number(item?.notional || 0),
+        }))
+      : [],
   };
 }
 
@@ -258,6 +284,27 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
                 <div>CROSS: <span className="text-orange-300">{(negotiated.summary || EMPTY_NEGOTIATED_SUMMARY).cross_count}</span></div>
                 <div>Notional: <span className="text-violet-300">{(Number((negotiated.summary || EMPTY_NEGOTIATED_SUMMARY).total_notional || 0) / 1e9).toFixed(2)}B</span></div>
               </div>
+
+              {Array.isArray(negotiated.items) && negotiated.items.length > 0 && (
+                <div className="mt-3 border-t border-gray-700/80 pt-3 space-y-1">
+                  {negotiated.items.map((item, index) => {
+                    const tradeType = String(item.trade_type || 'NEGO').toUpperCase();
+                    const badgeTone = tradeType === 'CROSS' ? 'text-orange-300 border-orange-700/40 bg-orange-900/20' : 'text-emerald-300 border-emerald-700/40 bg-emerald-900/20';
+
+                    return (
+                      <div key={`${item.timestamp || 't'}-${index}`} className="grid grid-cols-5 gap-2 text-[11px] text-gray-300">
+                        <div className="text-gray-500">{item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : '-'}</div>
+                        <div className="font-semibold text-cyan-300">{item.symbol || symbol}</div>
+                        <div className="text-right">{Number(item.price || 0).toLocaleString('id-ID')}</div>
+                        <div className="text-right">{Number(item.volume || 0).toLocaleString('id-ID')}</div>
+                        <div className="text-right">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded border ${badgeTone}`}>{tradeType}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

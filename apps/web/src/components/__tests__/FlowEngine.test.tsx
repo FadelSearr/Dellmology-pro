@@ -40,7 +40,25 @@ describe('FlowEngine negotiated monitor hardening', () => {
       if (url.includes('/api/negotiated-monitor')) {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ count: 3 }),
+          json: async () => ({
+            count: 3,
+            summary: {
+              total_volume: 150000,
+              total_notional: 1200000000,
+              nego_count: 2,
+              cross_count: 1,
+            },
+            items: [
+              {
+                timestamp: new Date().toISOString(),
+                symbol: 'TEST',
+                price: 12345,
+                volume: 1000,
+                trade_type: 'NEGO',
+                notional: 12345000,
+              },
+            ],
+          }),
         } as Response);
       }
 
@@ -61,5 +79,7 @@ describe('FlowEngine negotiated monitor hardening', () => {
     expect(await screen.findByText('Nego Market Feed')).toBeInTheDocument();
     expect(screen.getByText('NEGO:')).toBeInTheDocument();
     expect(screen.getByText('CROSS:')).toBeInTheDocument();
+    expect(screen.getByText('TEST')).toBeInTheDocument();
+    expect(screen.getByText('NEGO')).toBeInTheDocument();
   });
 });
