@@ -28,6 +28,7 @@ import {
   YAxis,
 } from 'recharts';
 import { applyGuardedConsensus, buildConsensus } from '@/lib/modelConsensus';
+import { calculateLiquidityGuard, type LiquidityGuard } from '@/lib/liquidityGuard';
 
 type Tone = 'good' | 'warning' | 'error';
 
@@ -219,24 +220,6 @@ interface TokenTelemetry {
   deadmanTriggered: boolean;
   deadmanLastAlertSeconds: number | null;
   deadmanCooldownSeconds: number | null;
-}
-
-interface LiquidityGuard {
-  dailyVolumeLots: number;
-  capPct: number;
-  liquidityCapLots: number;
-  atrPoints: number;
-  atrPct: number;
-  slippageBufferPct: number;
-  riskPerTradePct: number;
-  riskBudgetRp: number;
-  riskPerLotRp: number;
-  riskBasedLots: number;
-  activeCap: 'ATR' | 'LIQUIDITY';
-  maxLots: number;
-  impactPct: number;
-  highImpactOrder: boolean;
-  warning: string | null;
 }
 
 interface SystemicRisk {
@@ -1888,6 +1871,7 @@ function BottomPanel({
               <div>{`Liquidity Cap Max: ${liquidityGuard.liquidityCapLots.toLocaleString()} lots`}</div>
               <div className="text-cyan-400">{`Max Recommended: ${liquidityGuard.maxLots.toLocaleString()} lots`}</div>
               <div>{`Active Cap: ${liquidityGuard.activeCap}`}</div>
+              <div>{`Participation Gate: ${liquidityGuard.participationCapBinding ? 'ACTIVE' : 'PASS'}`}</div>
               <div>{`Order Impact: ${(liquidityGuard.impactPct * 100).toFixed(2)}% of daily vol`}</div>
               {liquidityGuard.warning ? <div className="text-amber-400 mt-1">{liquidityGuard.warning}</div> : null}
               {liquidityGuard.highImpactOrder ? <div className="text-rose-400 mt-1 font-bold">High Impact Order - Liquidity Risk!</div> : null}
@@ -3499,70 +3483,19 @@ export default function Home() {
     SYSTEMIC_RISK_HARD_GATE ? 1 : 0,
   ]);
 
-  const estimatedDailyVolumeShares =
-    typeof marketTotalVolume === 'number' && marketTotalVolume > 0
-      ? marketTotalVolume
-      : marketData.reduce((sum, point) => sum + Number(point.volume || 0), 0);
-  const estimatedDailyVolumeLots = Math.max(1, Math.floor(estimatedDailyVolumeShares / 100));
-  const atrWindow = Math.min(POSITION_SIZING_ATR_WINDOW, Math.max(1, marketData.length - 1));
-  let atrPoints = 0;
-  if (atrWindow > 0 && marketData.length > 1) {
-    let trSum = 0;
-    for (let offset = 0; offset < atrWindow; offset += 1) {
-      const currentIndex = marketData.length - 1 - offset;
-      const previousIndex = currentIndex - 1;
-      if (previousIndex < 0) {
-        break;
-      }
-
-      const current = Number(marketData[currentIndex]?.price || 0);
-      const previous = Number(marketData[previousIndex]?.price || current);
-      trSum += Math.abs(current - previous);
-    }
-    atrPoints = trSum / atrWindow;
-  }
-  if (!Number.isFinite(atrPoints) || atrPoints <= 0) {
-    atrPoints = Math.max(1, currentPrice * 0.01);
-  }
-  const atrPct = currentPrice > 0 ? atrPoints / currentPrice : 0;
-  const slippageBufferPct = killSwitchActive ? POSITION_SIZING_SLIPPAGE_RISK_PCT : POSITION_SIZING_SLIPPAGE_NORMAL_PCT;
-  const effectiveStopPoints = Math.max(1, atrPoints + currentPrice * slippageBufferPct);
-  const riskPerLotRp = Math.max(1, effectiveStopPoints * 100);
-  const riskPerTradePct = Math.max(0.001, POSITION_SIZING_RISK_PER_TRADE_PCT);
-  const riskBudgetRp = Math.max(1_000, POSITION_SIZING_ACCOUNT_RP * riskPerTradePct);
-  const riskBasedLots = Math.max(1, Math.floor(riskBudgetRp / riskPerLotRp));
-  const participationCapPct = killSwitchActive ? runtimeParticipationCapRiskPct : runtimeParticipationCapNormalPct;
-  const liquidityCapLots = Math.max(1, Math.floor(estimatedDailyVolumeLots * participationCapPct));
-  const maxRecommendedLots = Math.max(1, Math.min(liquidityCapLots, riskBasedLots));
-  const activeCap: 'ATR' | 'LIQUIDITY' = riskBasedLots <= liquidityCapLots ? 'ATR' : 'LIQUIDITY';
-  const impactPct = estimatedDailyVolumeLots > 0 ? maxRecommendedLots / estimatedDailyVolumeLots : 1;
-  const highImpactOrder = impactPct > 0.05;
-  const liquidityGuard: LiquidityGuard = {
-    dailyVolumeLots: estimatedDailyVolumeLots,
-    capPct: participationCapPct,
-    liquidityCapLots,
-    atrPoints,
-    atrPct,
-    slippageBufferPct,
-    riskPerTradePct,
-    riskBudgetRp,
-    riskPerLotRp,
-    riskBasedLots,
-    activeCap,
-    maxLots: maxRecommendedLots,
-    impactPct,
-    highImpactOrder,
-    warning:
-      highImpactOrder
-        ? 'High Impact Order - Liquidity Risk!'
-        : activeCap === 'ATR'
-        ? 'ATR risk cap active: volatility-adjusted lot sizing applied'
-        : maxRecommendedLots < 20
-        ? 'Liquidity warning: cap < 20 lots, high slippage risk'
-        : maxRecommendedLots < 100
-          ? 'Moderate liquidity: keep entries staggered'
-          : null,
-  };
+  const liquidityGuard: LiquidityGuard = calculateLiquidityGuard({
+    marketData,
+    marketTotalVolume,
+    currentPrice,
+    killSwitchActive,
+    runtimeParticipationCapNormalPct,
+    runtimeParticipationCapRiskPct,
+    positionSizingAtrWindow: POSITION_SIZING_ATR_WINDOW,
+    positionSizingSlippageRiskPct: POSITION_SIZING_SLIPPAGE_RISK_PCT,
+    positionSizingSlippageNormalPct: POSITION_SIZING_SLIPPAGE_NORMAL_PCT,
+    positionSizingRiskPerTradePct: POSITION_SIZING_RISK_PER_TRADE_PCT,
+    positionSizingAccountRp: POSITION_SIZING_ACCOUNT_RP,
+  });
   const betaThreshold = runtimeSystemicRiskBetaThreshold;
   const betaDenominator = Math.max(0.2, Math.abs(ihsgChangePct));
   const betaEstimate = Math.abs(priceChange) / betaDenominator;
