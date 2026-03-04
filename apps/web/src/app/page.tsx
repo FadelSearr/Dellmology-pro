@@ -893,6 +893,7 @@ function TopNavigation({
   priceCrossCheck,
   confidenceTracking,
   championChallenger,
+  newsImpact,
   infraStatus,
   globalData,
 }: {
@@ -912,6 +913,7 @@ function TopNavigation({
   priceCrossCheck: PriceCrossCheckState;
   confidenceTracking: ModelConfidenceTracking;
   championChallenger: ChampionChallengerState;
+  newsImpact: NewsImpactState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1055,6 +1057,15 @@ function TopNavigation({
           title={championChallenger.reason || 'Champion-challenger stable'}
         >
           {`DRIFT ${championChallenger.warning ? 'WARN' : 'OK'}${championChallenger.swapRecommended ? ' SWAP' : ''}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            newsImpact.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={newsImpact.divergenceReason || `News stress ${newsImpact.stressScore.toFixed(1)} | UPS-${newsImpact.penaltyUps.toFixed(0)}`}
+        >
+          {`NEWS ${newsImpact.riskLabel}${newsImpact.warning ? ' RISK' : ''}`}
         </div>
         <div
           className={cn(
@@ -5057,6 +5068,7 @@ export default function Home() {
         priceCrossCheck={priceCrossCheck}
         confidenceTracking={confidenceTracking}
         championChallenger={championChallenger}
+        newsImpact={newsImpact}
         infraStatus={infraStatus}
         globalData={globalData}
       />
