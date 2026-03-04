@@ -27,6 +27,7 @@ import (
 const (
 	tokenAPIURL         = "http://localhost:3000/api/session"
 	websocketURL        = "wss://stream.stockbit.com/stream"
+	systemControlAPIURL = "http://localhost:3000/api/system-control"
 	databaseURL         = "postgresql://admin:password@localhost:5433/dellmology?sslmode=disable"
 	httpListenAddr      = ":8080"
 	workerHeartbeatAPIURL = "http://localhost:3000/api/worker-heartbeat"
@@ -35,6 +36,8 @@ const (
 	workerHeartbeatInterval = 5 * time.Minute
 	workerHeartbeatTimeout = 8 * time.Second
 	workerHeartbeatStaleThresholdSeconds = 60
+	systemControlPollInterval = 1 * time.Minute
+	systemControlTimeout = 8 * time.Second
 	// Risk Mitigation Config
 	rocInterval         = 5 * time.Minute // 5 minute window for RoC check
 	rocPriceDrop        = -0.10           // -10% price drop threshold
@@ -48,6 +51,10 @@ type TokenResponse struct {
 	Available         bool   `json:"available"`
 	Reason            string `json:"reason"`
 	RetryAfterSeconds int    `json:"retry_after_seconds"`
+}
+
+type SystemControlResponse struct {
+	IsSystemActive bool `json:"is_system_active"`
 }
 type WebSocketMessage struct {
 	Type string          `json:"t"`
@@ -349,8 +356,26 @@ func publishWorkerHeartbeat(client *http.Client, targetURL string) {
 
 func runStreamer() {
 	reconnectWait := reconnectMinWait
+	systemControlURL := strings.TrimSpace(os.Getenv("SYSTEM_CONTROL_URL"))
+	if systemControlURL == "" {
+		systemControlURL = systemControlAPIURL
+	}
 
 	for {
+		active, err := fetchSystemActive(systemControlURL)
+		if err != nil {
+			log.Printf("WARN: system-control check failed (%v), continue with existing state", err)
+		} else if !active {
+			wait := reconnectWait
+			if wait < 30*time.Second {
+				wait = 30 * time.Second
+			}
+			log.Printf("INFO: Cloud kill-switch active (is_system_active=false). Worker paused for %v", wait)
+			time.Sleep(wait)
+			reconnectWait = nextBackoff(reconnectWait)
+			continue
+		}
+
 		token, err := getAuthToken()
 		if err != nil {
 			if errors.Is(err, ErrTokenUnavailable) {
@@ -382,13 +407,64 @@ func runStreamer() {
 		reconnectWait = reconnectMinWait
 
 		log.Println("Successfully connected to WebSocket. Listening for messages...")
+		monitorStop := make(chan struct{})
+		go monitorSystemControlLoop(conn, systemControlURL, monitorStop)
 		messageLoop(conn)
+		close(monitorStop)
 		
 		conn.Close()
 		log.Println("WebSocket disconnected. Attempting to reconnect...")
 		time.Sleep(reconnectWait)
 		reconnectWait = nextBackoff(reconnectWait)
 	}
+}
+
+func monitorSystemControlLoop(conn *websocket.Conn, systemControlURL string, stop <-chan struct{}) {
+	ticker := time.NewTicker(systemControlPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			active, err := fetchSystemActive(systemControlURL)
+			if err != nil {
+				log.Printf("WARN: system-control monitor failed: %v", err)
+				continue
+			}
+			if !active {
+				log.Printf("WARN: Cloud kill-switch turned OFF stream (is_system_active=false). Closing websocket session.")
+				_ = conn.Close()
+				return
+			}
+		}
+	}
+}
+
+func fetchSystemActive(systemControlURL string) (bool, error) {
+	client := &http.Client{Timeout: systemControlTimeout}
+	response, err := client.Get(systemControlURL)
+	if err != nil {
+		return true, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return true, fmt.Errorf("system-control status %d", response.StatusCode)
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return true, err
+	}
+
+	var payload SystemControlResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return true, err
+	}
+
+	return payload.IsSystemActive, nil
 }
 
 func nextBackoff(current time.Duration) time.Duration {
