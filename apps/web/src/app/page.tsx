@@ -29,6 +29,7 @@ import {
 } from 'recharts';
 import { applyGuardedConsensus, buildConsensus } from '@/lib/modelConsensus';
 import { calculateLiquidityGuard, type LiquidityGuard } from '@/lib/liquidityGuard';
+import { buildSignalSnapshotPayload } from '@/lib/signalSnapshotPayload';
 
 type Tone = 'good' | 'warning' | 'error';
 
@@ -4172,10 +4173,13 @@ export default function Home() {
             signal: snapshotSignal,
             price: currentPrice,
             unified_power_score: Math.round(upsScore),
-            payload: {
-              ...alertData,
-              snapshot_source: 'telegram-alert',
-            },
+            payload: buildSignalSnapshotPayload({
+              alertData,
+              modelConsensus,
+              liquidityGuard,
+              snapshotSource: 'telegram-alert',
+              adversarialSource: adversarialNarrative.source,
+            }),
           }),
         });
         if (snapshotResponse.ok) {
@@ -4223,8 +4227,13 @@ export default function Home() {
     liquidityGuard.dailyVolumeLots,
     liquidityGuard.impactPct,
     liquidityGuard.highImpactOrder,
+    liquidityGuard.liquidityCapLots,
     liquidityGuard.maxLots,
+    liquidityGuard.riskBasedLots,
+    liquidityGuard.activeCap,
+    liquidityGuard.participationCapBinding,
     liquidityGuard.warning,
+    adversarialNarrative.source,
     minUpsForLong,
     hardGateSystemicRisk,
     systemicRisk.betaEstimate,
