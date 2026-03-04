@@ -892,6 +892,7 @@ function TopNavigation({
   dataSanity,
   priceCrossCheck,
   confidenceTracking,
+  championChallenger,
   infraStatus,
   globalData,
 }: {
@@ -910,6 +911,7 @@ function TopNavigation({
   dataSanity: DataSanityState;
   priceCrossCheck: PriceCrossCheckState;
   confidenceTracking: ModelConfidenceTracking;
+  championChallenger: ChampionChallengerState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1044,6 +1046,15 @@ function TopNavigation({
           title={confidenceTracking.reason || 'AI confidence stable'}
         >
           {`AI ${confidenceTracking.warning ? 'LOW' : 'OK'} ${confidenceTracking.accuracyPct.toFixed(0)}%`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            championChallenger.warning ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={championChallenger.reason || 'Champion-challenger stable'}
+        >
+          {`DRIFT ${championChallenger.warning ? 'WARN' : 'OK'}${championChallenger.swapRecommended ? ' SWAP' : ''}`}
         </div>
         <div
           className={cn(
@@ -5045,6 +5056,7 @@ export default function Home() {
         dataSanity={dataSanity}
         priceCrossCheck={priceCrossCheck}
         confidenceTracking={confidenceTracking}
+        championChallenger={championChallenger}
         infraStatus={infraStatus}
         globalData={globalData}
       />
