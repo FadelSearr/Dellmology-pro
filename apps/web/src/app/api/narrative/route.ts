@@ -36,10 +36,14 @@ export async function POST(request: Request) {
     const confidence = calculateNarrativeConfidence(type, data);
     const marketBias = inferNarrativeBias(type, data, confidence);
 
+    const splitNarrative = splitNarrativeSections(narrativeResponse);
+
     return NextResponse.json({
       type,
       symbol: symbol || 'N/A',
       narrative: narrativeResponse,
+      primary_narrative: splitNarrative.primaryNarrative,
+      bearish_counter_case: splitNarrative.bearishCounterCase,
       confidence_score: confidence.score,
       confidence_label: confidence.label,
       market_bias: marketBias.bias,
@@ -54,6 +58,37 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+function splitNarrativeSections(narrative: string): { primaryNarrative: string; bearishCounterCase: string | null } {
+  const text = (narrative || '').trim();
+  if (!text) {
+    return { primaryNarrative: '', bearishCounterCase: null };
+  }
+
+  const marker = '🛡️ Bearish Counter-Case:';
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex >= 0) {
+    const primaryNarrative = text.slice(0, markerIndex).trim();
+    const bearishCounterCase = text.slice(markerIndex + marker.length).trim();
+    return {
+      primaryNarrative,
+      bearishCounterCase: bearishCounterCase || null,
+    };
+  }
+
+  const regexMarker = /(Risiko Bearish\s*\(Counter-Case\)\s*:)/i;
+  const regexMatch = text.match(regexMarker);
+  if (regexMatch?.index !== undefined) {
+    const primaryNarrative = text.slice(0, regexMatch.index).trim();
+    const bearishCounterCase = text.slice(regexMatch.index).trim();
+    return {
+      primaryNarrative,
+      bearishCounterCase: bearishCounterCase || null,
+    };
+  }
+
+  return { primaryNarrative: text, bearishCounterCase: null };
 }
 
 function inferNarrativeBias(

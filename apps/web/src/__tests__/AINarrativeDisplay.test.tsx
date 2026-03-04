@@ -28,4 +28,23 @@ describe('AINarrativeDisplay', () => {
     });
     expect(await screen.findByText(/AI Analysis/)).toBeInTheDocument();
   });
+
+  it('renders bearish counter-case panel when provided by API', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        narrative: 'Kesimpulan utama',
+        primary_narrative: 'Kesimpulan utama',
+        bearish_counter_case: '1) Risiko likuiditas\n2) Risiko fake breakout',
+        generated_at: new Date().toISOString(),
+      }),
+    });
+
+    await act(async () => {
+      render(<AINarrativeDisplay symbol="TEST" type="swot" />);
+    });
+
+    expect(await screen.findByText(/Bearish Counter-Case/)).toBeInTheDocument();
+    expect(screen.getByText(/Risiko likuiditas/)).toBeInTheDocument();
+  });
 });

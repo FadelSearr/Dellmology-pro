@@ -1,19 +1,27 @@
-import request from 'supertest';
-import app from '@/app'; // assuming Next.js testing server isn't setup; if not, skip
+jest.mock('next/server', () => ({
+  NextResponse: {
+    json: (body: unknown, init?: { status?: number }) => ({
+      status: init?.status ?? 200,
+      json: async () => body,
+    }),
+  },
+}));
 
-// This is a placeholder; actual nextjs API tests may require jest-edge or similar.
-// We'll instead check the function directly by importing the route handler.
-
-import { POST } from '@/app/api/narrative/route';
+jest.mock('@/lib/security/coolingOff', () => ({
+  readCoolingOffLockState: jest.fn(async () => ({ active: false })),
+}));
 
 describe('Narrative API', () => {
   it('returns 200 with default message when data empty', async () => {
+    const { POST } = await import('@/app/api/narrative/route');
     const req: any = {
       json: async () => ({ type: 'broker', symbol: 'TEST', data: {} }),
     };
     const res = await POST(req as Request);
     const json = await res.json();
-    expect(res instanceof Response).toBe(true);
+    expect(res.status).toBe(200);
     expect(json.narrative).toMatch(/narasi/i);
+    expect(json.primary_narrative).toBeTruthy();
+    expect(Object.prototype.hasOwnProperty.call(json, 'bearish_counter_case')).toBe(true);
   });
 });
