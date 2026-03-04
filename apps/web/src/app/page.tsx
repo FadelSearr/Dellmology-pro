@@ -890,6 +890,7 @@ function TopNavigation({
   systemKillSwitch,
   rocKillSwitch,
   dataSanity,
+  priceCrossCheck,
   infraStatus,
   globalData,
 }: {
@@ -906,6 +907,7 @@ function TopNavigation({
   systemKillSwitch: SystemKillSwitchState;
   rocKillSwitch: RocKillSwitchState;
   dataSanity: DataSanityState;
+  priceCrossCheck: PriceCrossCheckState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1022,6 +1024,15 @@ function TopNavigation({
           title={dataSanity.reason || 'Data sanity validator pass'}
         >
           {`SANITY ${dataSanity.lockActive ? 'LOCK' : dataSanity.warning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            priceCrossCheck.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={priceCrossCheck.reason || 'External price anchor cross-check pass'}
+        >
+          {`XCHECK ${priceCrossCheck.warning ? `LOCK ${priceCrossCheck.maxDeviationPct.toFixed(1)}%` : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5021,6 +5032,7 @@ export default function Home() {
         systemKillSwitch={systemKillSwitch}
         rocKillSwitch={rocKillSwitch}
         dataSanity={dataSanity}
+        priceCrossCheck={priceCrossCheck}
         infraStatus={infraStatus}
         globalData={globalData}
       />
