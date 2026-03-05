@@ -304,6 +304,11 @@ interface RecoveryPulseState {
   failRateDeltaPct: number;
   failStreak: number;
   lockStreak: number;
+  recentTrail: Array<{
+    status: 'SUCCESS' | 'FAILED' | 'LOCKED';
+    source: RecoveryTelemetrySource;
+    at: string;
+  }>;
   lastStatus: 'IDLE' | 'SUCCESS' | 'FAILED' | 'LOCKED';
   lastAttemptAt: string | null;
   lastSource: RecoveryTelemetrySource | null;
@@ -4715,6 +4720,7 @@ export default function Home() {
     failRateDeltaPct: 0,
     failStreak: 0,
     lockStreak: 0,
+    recentTrail: [],
     lastStatus: 'IDLE',
     lastAttemptAt: null,
     lastSource: null,
@@ -4878,6 +4884,7 @@ export default function Home() {
           failRateDeltaPct: failRatePct - prev.failRatePct,
           failStreak,
           lockStreak,
+          recentTrail: recentEvents.slice(0, 3),
           lastStatus: latest?.lastStatus || 'IDLE',
           lastAttemptAt: latest?.lastAttemptAt || null,
           lastSource: latest?.source || null,
@@ -7583,6 +7590,12 @@ export default function Home() {
     recoveryEscalationLevel === 'CRITICAL'
       ? `RECOVERY ESCALATION ${recoveryEscalationLevel} | lock streak ${recoveryPulse.lockStreak} | fail ${recoveryPulse.failures}/${Math.max(1, recoveryPulse.attempts)} (${recoveryPulse.failRatePct.toFixed(1)}%) | latest ${recoveryPulse.lastStatus}${recoveryPulse.lastSource ? ` @ ${recoveryPulse.lastSource}` : ''} | manual recovery required`
       : `RECOVERY ESCALATION ${recoveryEscalationLevel} | fail streak ${recoveryPulse.failStreak} | fail ${recoveryPulse.failures}/${Math.max(1, recoveryPulse.attempts)} (${recoveryPulse.failRatePct.toFixed(1)}%) | latest ${recoveryPulse.lastStatus}${recoveryPulse.lastSource ? ` @ ${recoveryPulse.lastSource}` : ''} | monitor reset path`;
+  const recoveryEscalationTrail =
+    recoveryPulse.recentTrail.length > 0
+      ? recoveryPulse.recentTrail
+          .map((item) => `${item.status}@${item.source} ${new Date(item.at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`)
+          .join('  •  ')
+      : 'No recent recovery events';
   const combatCriticalLocks = buildActiveLockGuards({
     coolingOffActive: coolingOff.active,
     coolingRemainingLabel,
@@ -7686,7 +7699,10 @@ export default function Home() {
       ) : null}
       {recoveryEscalationActive ? (
         <div className={cn('border-b px-4 py-2 flex items-center justify-between gap-3', recoveryEscalationTone)}>
-          <div className="text-[10px] font-mono">{recoveryEscalationMessage}</div>
+          <div className="min-w-0 space-y-1">
+            <div className="text-[10px] font-mono">{recoveryEscalationMessage}</div>
+            <div className="text-[9px] font-mono text-slate-200/80 truncate" title={recoveryEscalationTrail}>{`Trail: ${recoveryEscalationTrail}`}</div>
+          </div>
           <button
             onClick={resetDeadman}
             disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
