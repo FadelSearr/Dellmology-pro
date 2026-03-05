@@ -24,12 +24,14 @@ interface BrokerNarrativePayload {
 export const AINarrativeDisplay = ({ 
   symbol, 
   type = 'broker',
-  autoRefresh = false 
-}: { 
+  autoRefresh = false,
+  combatMode = false
+  }: { 
   symbol: string; 
   type?: 'broker' | 'regime' | 'screener' | 'swot';
   autoRefresh?: boolean;
-}) => {
+  combatMode?: boolean;
+  }) => {
   const [narrative, setNarrative] = useState<AInarrative | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -178,50 +180,63 @@ export const AINarrativeDisplay = ({
   const primaryNarrative = (narrative.primary_narrative || narrative.narrative || '').trim();
   const bearishCounterCase = (narrative.bearish_counter_case || '').trim();
 
-  return (
-    <div className="bg-linear-to-r from-purple-900/20 to-indigo-900/20 border border-purple-700/50 rounded-lg p-4">
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <h4 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
-            🤖 AI Analysis
-            {narrative.symbol && <span className="text-xs bg-purple-500/30 px-2 py-1 rounded">{narrative.symbol}</span>}
-          </h4>
-          <div className="mt-1 flex items-center gap-2 text-xs">
-            <span
-              className={`px-2 py-0.5 rounded border ${
-                narrative.confidence_label === 'HIGH'
-                  ? 'border-green-700 bg-green-900/30 text-green-300'
-                  : narrative.confidence_label === 'MEDIUM'
-                    ? 'border-yellow-700 bg-yellow-900/30 text-yellow-300'
-                    : 'border-red-700 bg-red-900/30 text-red-300'
-              }`}
-            >
-              Confidence: {narrative.confidence_label || 'LOW'}
-            </span>
-            <span className="text-gray-500">{narrative.confidence_score ?? 0}/100</span>
+    if (combatMode) {
+      // Combat Mode: Short narrative, big UPS, hide logs/footer
+      const shortNarrative = primaryNarrative.split(/\.|,|;/)[0].split(' ').slice(0, 3).join(' ').toUpperCase();
+      return (
+        <div className="bg-gradient-to-r from-red-900/40 to-yellow-900/40 border-2 border-red-700 rounded-lg p-6 flex flex-col items-center justify-center">
+          <div className="text-4xl font-extrabold text-yellow-300 mb-2 tracking-wide">{shortNarrative}</div>
+          <div className="text-2xl font-bold text-cyan-400 mb-1">UPS: {narrative.market_bias_score ?? narrative.confidence_score ?? 0}/100</div>
+          {/* No footer, no logs, no bearish counter-case */}
+        </div>
+      );
+    }
+
+    // Normal mode
+    return (
+      <div className="bg-linear-to-r from-purple-900/20 to-indigo-900/20 border border-purple-700/50 rounded-lg p-4">
+        <div className="flex items-start justify-between mb-2">
+          <div>
+            <h4 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
+              🤖 AI Analysis
+              {narrative.symbol && <span className="text-xs bg-purple-500/30 px-2 py-1 rounded">{narrative.symbol}</span>}
+            </h4>
+            <div className="mt-1 flex items-center gap-2 text-xs">
+              <span
+                className={`px-2 py-0.5 rounded border ${
+                  narrative.confidence_label === 'HIGH'
+                    ? 'border-green-700 bg-green-900/30 text-green-300'
+                    : narrative.confidence_label === 'MEDIUM'
+                      ? 'border-yellow-700 bg-yellow-900/30 text-yellow-300'
+                      : 'border-red-700 bg-red-900/30 text-red-300'
+                }`}
+              >
+                Confidence: {narrative.confidence_label || 'LOW'}
+              </span>
+              <span className="text-gray-500">{narrative.confidence_score ?? 0}/100</span>
+            </div>
           </div>
+          <span className="text-xs text-gray-500">
+            {new Date(narrative.generated_at).toLocaleTimeString()}
+          </span>
         </div>
-        <span className="text-xs text-gray-500">
-          {new Date(narrative.generated_at).toLocaleTimeString()}
-        </span>
-      </div>
 
-      <div className="prose prose-invert max-w-none">
-        <p className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
-          {primaryNarrative}
-        </p>
-      </div>
-
-      {bearishCounterCase && (
-        <div className="mt-3 rounded border border-rose-700/50 bg-rose-900/20 p-3">
-          <div className="text-xs font-semibold text-rose-300 mb-1">🛡️ Bearish Counter-Case</div>
-          <p className="text-xs text-rose-100/90 whitespace-pre-wrap font-mono">{bearishCounterCase}</p>
+        <div className="prose prose-invert max-w-none">
+          <p className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
+            {primaryNarrative}
+          </p>
         </div>
-      )}
 
-      <div className="mt-3 text-xs text-gray-500 border-t border-gray-700 pt-3">
-        💡 <span className="text-gray-400">Analysis generated by Gemini 1.5 Flash. Use as reference, not financial advice.</span>
+        {bearishCounterCase && (
+          <div className="mt-3 rounded border border-rose-700/50 bg-rose-900/20 p-3">
+            <div className="text-xs font-semibold text-rose-300 mb-1">🛡️ Bearish Counter-Case</div>
+            <p className="text-xs text-rose-100/90 whitespace-pre-wrap font-mono">{bearishCounterCase}</p>
+          </div>
+        )}
+
+        <div className="mt-3 text-xs text-gray-500 border-t border-gray-700 pt-3">
+          💡 <span className="text-gray-400">Analysis generated by Gemini 1.5 Flash. Use as reference, not financial advice.</span>
+        </div>
       </div>
-    </div>
-  );
+    );
 };
