@@ -7984,6 +7984,11 @@ export default function Home() {
   const recoveryEscalationNoisySourceLabel = recoveryEscalationNoisySource30m
     ? `Noisy 30m ${recoveryEscalationNoisySource30m.source} ${recoveryEscalationNoisySource30m.suppressedCount}/${recoveryEscalationNoisySource30m.detectedCount} (${recoveryEscalationNoisySource30m.suppressionRatioPct.toFixed(0)}%)`
     : 'Noisy 30m: none';
+  const recoveryEscalationNoisySourceTarget =
+    recoveryEscalationNoisySource30m &&
+    ['deadman', 'cooling-off', 'deploy-gate'].includes(recoveryEscalationNoisySource30m.source)
+      ? (recoveryEscalationNoisySource30m.source as RecoveryTelemetrySource)
+      : null;
   useEffect(() => {
     if (!recoveryEscalationAck.signature || !recoveryEscalationAck.silencedUntil || !recoveryEscalationAck.ackedAt) {
       return;
@@ -8134,17 +8139,32 @@ export default function Home() {
           </div>
           <div className="shrink-0 flex items-center gap-2">
             {recoveryEscalationNoisySource30m ? (
-              <span
-                className={cn(
-                  'text-[10px] font-mono px-2 py-1 rounded border',
-                  recoveryEscalationNoisySourceHot
-                    ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
-                    : 'border-slate-300/20 bg-slate-900/30 text-slate-200',
-                )}
-                title={recoveryEscalationNoisySourceLabel}
-              >
-                {recoveryEscalationNoisySourceLabel}
-              </span>
+              recoveryEscalationNoisySourceTarget ? (
+                <button
+                  onClick={() => focusRecoveryTelemetry(recoveryEscalationNoisySourceTarget)}
+                  className={cn(
+                    'text-[10px] font-mono px-2 py-1 rounded border hover:opacity-90',
+                    recoveryEscalationNoisySourceHot
+                      ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
+                      : 'border-slate-300/20 bg-slate-900/30 text-slate-200',
+                  )}
+                  title={`${recoveryEscalationNoisySourceLabel} | click to focus Action Dock`}
+                >
+                  {recoveryEscalationNoisySourceLabel}
+                </button>
+              ) : (
+                <span
+                  className={cn(
+                    'text-[10px] font-mono px-2 py-1 rounded border',
+                    recoveryEscalationNoisySourceHot
+                      ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
+                      : 'border-slate-300/20 bg-slate-900/30 text-slate-200',
+                  )}
+                  title={recoveryEscalationNoisySourceLabel}
+                >
+                  {recoveryEscalationNoisySourceLabel}
+                </span>
+              )
             ) : null}
             <button
               onClick={acknowledgeRecoveryEscalation}
