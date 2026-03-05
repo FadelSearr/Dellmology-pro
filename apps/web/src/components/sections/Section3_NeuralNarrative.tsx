@@ -10,6 +10,7 @@ interface Section3Props {
   symbol: string;
   aiNarrative?: string;
   isLoading?: boolean;
+    // newsEvents is part of sentimentData state, not props
 }
 
 /**
@@ -34,6 +35,7 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
     reason: string;
     sourceAlignment: 'HIGH' | 'MEDIUM' | 'LOW';
     sourceCoverage: number;
+    newsEvents: Array<{ date: string; headline: string; impact: string }>;
   }>({
     retailSentiment: 0,
     whaleBias: 0,
@@ -41,24 +43,24 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
     reason: 'Loading divergence signal...',
     sourceAlignment: 'LOW',
     sourceCoverage: 0,
+    newsEvents: [],
   });
 
   useEffect(() => {
     let mounted = true;
-
     const loadDivergence = async () => {
       try {
-        const response = await fetch(`/api/news-impact?symbol=${encodeURIComponent(symbol)}`);
-        const payload = response.ok ? await response.json() : null;
-        if (!mounted || !payload) return;
-
+        const res = await fetch(`/api/divergence?symbol=${symbol}`);
+        const payload = await res.json();
+        if (!mounted) return;
         setSentimentData({
-          retailSentiment: Number(payload.retail_sentiment_score || 0),
-          whaleBias: Number(payload.whale_flow_bias || 0),
-          warning: Boolean(payload.divergence_warning),
-          reason: String(payload.divergence_reason || 'No divergence detected'),
+          retailSentiment: Number(payload.retail_sentiment ?? 0),
+          whaleBias: Number(payload.whale_bias ?? 0),
+          warning: Boolean(payload.warning ?? false),
+          reason: payload.reason ?? 'No reason provided',
           sourceAlignment: (payload.source_alignment || 'LOW') as 'HIGH' | 'MEDIUM' | 'LOW',
-          sourceCoverage: Number(payload.source_coverage || 0),
+          sourceCoverage: Number(payload.source_coverage ?? 0),
+          newsEvents: Array.isArray(payload.news_events) ? payload.news_events : [],
         });
       } catch {
         if (!mounted) return;
@@ -69,7 +71,6 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
         }));
       }
     };
-
     loadDivergence();
     const timer = setInterval(loadDivergence, 30000);
     return () => {
@@ -86,6 +87,25 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
         <h2 className="text-2xl font-bold text-white">🧠 Neural Narrative Hub</h2>
       </div>
 
+      // Removed duplicate useEffect
+            {sentimentData.newsEvents && sentimentData.newsEvents.length > 0 && (
+              <div className="mt-2">
+                <div className="text-xs font-bold text-cyan-300 mb-1">📰 News Impact Overlay</div>
+                <ul>
+                  {sentimentData.newsEvents.map((event, idx) => (
+                    <li key={idx} className={`flex items-center gap-2 px-2 py-1 rounded ${
+                      event.impact === 'positive' ? 'bg-green-900/30 text-green-300' : event.impact === 'negative' ? 'bg-red-900/30 text-red-300' : 'bg-slate-800/30 text-slate-300'
+                    }`}>
+                      <span className="font-bold">
+                        {event.impact === 'positive' ? '🟢' : event.impact === 'negative' ? '🔴' : '⚪'}
+                      </span>
+                      <span className="text-xs">{event.date}</span>
+                      <span className="truncate" title={event.headline}>{event.headline}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
       {/* Screener Controls */}
       <Card className="space-y-4" noPadding>
         <div className="p-4 border-b border-gray-700">
