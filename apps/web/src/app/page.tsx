@@ -280,6 +280,14 @@ interface SignalAuditState {
   wins: number;
 }
 
+interface RecoveryAttemptTelemetry {
+  attempts: number;
+  successes: number;
+  failures: number;
+  lastAttemptAt: string | null;
+  lastStatus: 'IDLE' | 'SUCCESS' | 'FAILED' | 'LOCKED';
+}
+
 interface TokenTelemetry {
   status: 'fresh' | 'expiring' | 'expired' | 'missing';
   syncReason: string | null;
@@ -3609,6 +3617,7 @@ function BottomPanel({
   volumeFingerprint,
   backtestSummary,
   signalAudit,
+  recoveryTelemetry,
 }: {
   narrative: string;
   adversarialNarrative: AdversarialNarrative;
@@ -3670,6 +3679,7 @@ function BottomPanel({
   systemKillSwitch: SystemKillSwitchState;
   backtestSummary: BacktestSummaryState | null;
   signalAudit: SignalAuditState;
+  recoveryTelemetry: RecoveryAttemptTelemetry;
 }) {
   const label = confidenceTracking.warning ? 'LOW' : confidence?.confidence_label || 'MEDIUM';
   const accuracy = confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct : Number(confidence?.accuracy_pct || 0);
@@ -4295,6 +4305,21 @@ function BottomPanel({
             </div>
           ) : null}
           <div className="border border-slate-800 rounded px-2 py-1 bg-slate-900/40 text-[9px] font-mono text-slate-400 space-y-1">
+            <div className="text-slate-500 uppercase tracking-wider">Recovery Telemetry</div>
+            <div>{`Attempt ${recoveryTelemetry.attempts} | OK ${recoveryTelemetry.successes} | FAIL ${recoveryTelemetry.failures}`}</div>
+            <div
+              className={cn(
+                recoveryTelemetry.lastStatus === 'SUCCESS'
+                  ? 'text-emerald-300'
+                  : recoveryTelemetry.lastStatus === 'FAILED' || recoveryTelemetry.lastStatus === 'LOCKED'
+                    ? 'text-rose-300'
+                    : 'text-slate-500',
+              )}
+            >
+              {`Last ${recoveryTelemetry.lastStatus}${recoveryTelemetry.lastAttemptAt ? ` @ ${new Date(recoveryTelemetry.lastAttemptAt).toLocaleTimeString('id-ID')}` : ''}`}
+            </div>
+          </div>
+          <div className="border border-slate-800 rounded px-2 py-1 bg-slate-900/40 text-[9px] font-mono text-slate-400 space-y-1">
             <div className="text-slate-500 uppercase tracking-wider">Signal Audit Trail</div>
             <div>{`Eval ${signalAudit.evaluated} | W/L ${signalAudit.wins}/${signalAudit.losses}`}</div>
             {signalAudit.rows.length > 0 ? (
@@ -4595,6 +4620,13 @@ export default function Home() {
     checkedAt: null,
   });
   const [deadmanResetCooldown, setDeadmanResetCooldown] = useState(0);
+  const [recoveryTelemetry, setRecoveryTelemetry] = useState<RecoveryAttemptTelemetry>({
+    attempts: 0,
+    successes: 0,
+    failures: 0,
+    lastAttemptAt: null,
+    lastStatus: 'IDLE',
+  });
   const [coolingOff, setCoolingOff] = useState<CoolingOffState>({
     active: false,
     activeUntil: null,
@@ -7039,6 +7071,13 @@ export default function Home() {
       return;
     }
 
+    setRecoveryTelemetry((prev) => ({
+      ...prev,
+      attempts: prev.attempts + 1,
+      lastAttemptAt: new Date().toISOString(),
+      lastStatus: 'IDLE',
+    }));
+
     setActionState({ busy: true, message: 'Resetting deadman state...' });
     try {
       const response = await fetch('/api/system-control/deadman', {
@@ -7047,17 +7086,35 @@ export default function Home() {
       const body = (await response.json()) as { success?: boolean; error?: string; retry_after_seconds?: number };
       if (response.status === 423) {
         setActionState({ busy: false, message: `Deadman reset locked: ${body.error || 'immutable audit chain lock active'}` });
+        setRecoveryTelemetry((prev) => ({
+          ...prev,
+          failures: prev.failures + 1,
+          lastStatus: 'LOCKED',
+          lastAttemptAt: new Date().toISOString(),
+        }));
         return;
       }
       if (!response.ok || !body.success) {
         if (response.status === 429 && typeof body.retry_after_seconds === 'number') {
           setDeadmanResetCooldown(Math.max(1, Math.floor(body.retry_after_seconds)));
         }
+        setRecoveryTelemetry((prev) => ({
+          ...prev,
+          failures: prev.failures + 1,
+          lastStatus: 'FAILED',
+          lastAttemptAt: new Date().toISOString(),
+        }));
         throw new Error(body.error || 'Deadman reset failed');
       }
 
       setDeadmanResetCooldown(typeof body.retry_after_seconds === 'number' ? Math.max(1, Math.floor(body.retry_after_seconds)) : 30);
       setActionState({ busy: false, message: 'Deadman reset completed' });
+      setRecoveryTelemetry((prev) => ({
+        ...prev,
+        successes: prev.successes + 1,
+        lastStatus: 'SUCCESS',
+        lastAttemptAt: new Date().toISOString(),
+      }));
       void fetchDashboard();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Deadman reset failed';
@@ -7437,6 +7494,7 @@ export default function Home() {
           systemKillSwitch={systemKillSwitch}
           backtestSummary={backtestSummary}
           signalAudit={signalAudit}
+          recoveryTelemetry={recoveryTelemetry}
         />
       ) : (
         <div
