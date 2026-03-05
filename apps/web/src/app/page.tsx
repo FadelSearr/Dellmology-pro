@@ -3841,6 +3841,71 @@ function BottomPanel({
   const canInvestigatePrev = recoveryEscalationInvestigateIndex > 0;
   const canInvestigateNext =
     recoveryEscalationInvestigateIndex >= 0 && recoveryEscalationInvestigateIndex < investigateTrailEvents.length - 1;
+  const selectInvestigateEvent = (item: RecoveryEscalationAuditEvent) => {
+    if (item.source && ['deadman', 'cooling-off', 'deploy-gate'].includes(item.source)) {
+      onRecoveryTelemetrySourceChange(item.source as RecoveryTelemetrySource);
+    }
+
+    const nextSignature = item.signature && item.signature === recoveryEscalationInvestigateSignatureActive ? null : item.signature || null;
+    setRecoveryEscalationInvestigateSignature(nextSignature);
+  };
+  const moveInvestigate = (direction: 'prev' | 'next') => {
+    if (direction === 'prev') {
+      if (!canInvestigatePrev) {
+        return;
+      }
+      const prevItem = investigateTrailEvents[recoveryEscalationInvestigateIndex - 1];
+      setRecoveryEscalationInvestigateSignature(prevItem?.signature || null);
+      return;
+    }
+
+    if (!canInvestigateNext) {
+      return;
+    }
+    const nextItem = investigateTrailEvents[recoveryEscalationInvestigateIndex + 1];
+    setRecoveryEscalationInvestigateSignature(nextItem?.signature || null);
+  };
+  useEffect(() => {
+    if (!recoveryEscalationInvestigateSignatureActive) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) {
+        return;
+      }
+
+      if (event.key === '[') {
+        event.preventDefault();
+        moveInvestigate('prev');
+        return;
+      }
+
+      if (event.key === ']') {
+        event.preventDefault();
+        moveInvestigate('next');
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setRecoveryEscalationInvestigateSignature(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [
+    canInvestigateNext,
+    canInvestigatePrev,
+    investigateTrailEvents,
+    recoveryEscalationInvestigateIndex,
+    recoveryEscalationInvestigateSignatureActive,
+  ]);
   const recoveryEscalationSelectedSource = recoveryEscalationSourceStats.find((item) => item.source === recoveryTelemetrySource) || null;
   const bearishRiskBullets = extractBearishRiskBullets(adversarialNarrative.bearish);
   const adversarialChecklist = buildAdversarialChecklist({
@@ -4484,37 +4549,25 @@ function BottomPanel({
                       <span className="truncate" title={recoveryEscalationInvestigateSignatureActive}>{`Investigate ${recoveryEscalationInvestigateSignatureActive}`}</span>
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => {
-                            if (!canInvestigatePrev) {
-                              return;
-                            }
-                            const prevItem = investigateTrailEvents[recoveryEscalationInvestigateIndex - 1];
-                            setRecoveryEscalationInvestigateSignature(prevItem?.signature || null);
-                          }}
+                          onClick={() => moveInvestigate('prev')}
                           disabled={!canInvestigatePrev}
                           className="text-slate-400 hover:text-slate-200 disabled:opacity-40"
-                          title="Investigate previous event"
+                          title="Investigate previous event ([)"
                         >
                           Prev
                         </button>
                         <button
-                          onClick={() => {
-                            if (!canInvestigateNext) {
-                              return;
-                            }
-                            const nextItem = investigateTrailEvents[recoveryEscalationInvestigateIndex + 1];
-                            setRecoveryEscalationInvestigateSignature(nextItem?.signature || null);
-                          }}
+                          onClick={() => moveInvestigate('next')}
                           disabled={!canInvestigateNext}
                           className="text-slate-400 hover:text-slate-200 disabled:opacity-40"
-                          title="Investigate next event"
+                          title="Investigate next event (])"
                         >
                           Next
                         </button>
                         <button
                           onClick={() => setRecoveryEscalationInvestigateSignature(null)}
                           className="text-slate-400 hover:text-slate-200"
-                          title="Clear investigate signature"
+                          title="Clear investigate signature (Esc)"
                         >
                           Clear
                         </button>
@@ -4539,13 +4592,7 @@ function BottomPanel({
                 {investigateTrailEvents.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => {
-                      if (item.source && ['deadman', 'cooling-off', 'deploy-gate'].includes(item.source)) {
-                        onRecoveryTelemetrySourceChange(item.source as RecoveryTelemetrySource);
-                      }
-                      const nextSignature = item.signature && item.signature === recoveryEscalationInvestigateSignatureActive ? null : item.signature || null;
-                      setRecoveryEscalationInvestigateSignature(nextSignature);
-                    }}
+                    onClick={() => selectInvestigateEvent(item)}
                     className={cn(
                       'w-full flex items-center justify-between gap-1 text-left rounded px-1 py-0.5',
                       recoveryEscalationInvestigateSignatureActive && item.signature === recoveryEscalationInvestigateSignatureActive
