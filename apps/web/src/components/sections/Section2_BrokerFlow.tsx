@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/common/StatusBadge';
 import { BrokerFlowTable } from '@/components/tables/BrokerFlowTable';
 import { FlowEngine } from '@/components/dashboard/FlowEngine';
 import { NegotiatedMarketMonitor } from '@/components/monitoring/NegotiatedMarketMonitor';
+import { WhaleIdentityClustering } from '@/components/analysis/WhaleIdentityClustering';
 
 interface Section2Props {
   symbol: string;
@@ -195,6 +196,9 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
       {/* Negotiated Market Monitor Feed */}
       <div className="mt-4">
         <NegotiatedMarketMonitor />
+        <div className="mt-4">
+          <WhaleIdentityClustering symbol={symbol} />
+        </div>
       </div>
     </div>
   );
