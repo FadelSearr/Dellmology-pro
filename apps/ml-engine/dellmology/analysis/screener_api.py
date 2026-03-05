@@ -4,7 +4,7 @@ Provides REST endpoints for the Dellmology advanced stock screener
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from typing import List, Dict, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -23,6 +23,7 @@ from dellmology.utils.db_utils import (
 
 import redis
 import json
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,25 @@ def cache_set(key: str, value, ttl: int = 30):
     if not redis_client:
         return
     redis_client.setex(key, ttl, json.dumps(value))
+
+
+# --- Simple in-memory rate limiter (per-IP) ---
+_rate_buckets: Dict[str, List[float]] = {}
+_RATE_LIMIT = 10  # requests
+_RATE_WINDOW = 60  # seconds
+
+def rate_limit_dep(request: Request):
+    # note: this is intentionally simple; for production use Redis or similar shared store
+    now = time.time()
+    ip = request.client.host if request.client else "unknown"
+    arr = _rate_buckets.get(ip, [])
+    # prune old
+    pruned = [t for t in arr if now - t < _RATE_WINDOW]
+    if len(pruned) >= _RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    pruned.append(now)
+    _rate_buckets[ip] = pruned
+    return None
 
 
 class ScreeningRequest(BaseModel):
@@ -112,89 +132,79 @@ async def health_check():
 
 
 @router.post("/screen", response_model=ScreeningResponse)
-async def run_screening(request: ScreeningRequest):
-            # Model confidence scoring
-            from dellmology.analysis.screener import calculate_model_confidence
-            # Fetch last 10 signal snapshots from DB
-            try:
-                with get_db_connection() as conn:
-                    query = text("SELECT symbol, snapshot_json FROM signal_snapshots ORDER BY timestamp DESC LIMIT 10")
-                    result = conn.execute(query)
-                    signal_snapshots = [json.loads(row.snapshot_json) for row in result]
-            except Exception as e:
-                logger.warning(f"Could not fetch signal snapshots: {e}")
-                signal_snapshots = []
-            # Simulate actual outcomes (in real system, fetch from DB or PnL tracking)
-            actual_outcomes = {snap.get("symbol"): 0.1 for snap in signal_snapshots}  # Placeholder: all hit
-            model_confidence = calculate_model_confidence(signal_snapshots, actual_outcomes)
+async def run_screening(request: ScreeningRequest, _=Depends(rate_limit_dep)):
     try:
+        # caching key
         cache_key = f"screen:{request.mode}:{request.min_score}:{','.join(request.symbols or [])}"
         cached = cache_get(cache_key)
         if cached is not None:
             return cached
 
-        # Golden-record validation (anchor stocks)
-        from dellmology.data_pipeline.global_market_aggregator import fetch_anchor_prices
-        from dellmology.utils.db_utils import validate_golden_record, save_signal_snapshot
-        anchor_symbols = ["BBCA", "ASII", "TLKM"]
-        public_prices = fetch_anchor_prices([s + ".JK" for s in anchor_symbols])
-        validation = validate_golden_record(anchor_symbols, public_prices, threshold=0.02)
-        kill_switch_triggered = not all(validation.values())
+        # Basic golden-record validation (anchor stocks)
+        try:
+            from dellmology.data_pipeline.global_market_aggregator import fetch_anchor_prices
+            from dellmology.utils.db_utils import validate_golden_record, save_signal_snapshot
+            anchor_symbols = ["BBCA", "ASII", "TLKM"]
+            public_prices = fetch_anchor_prices([s + ".JK" for s in anchor_symbols])
+            validation = validate_golden_record(anchor_symbols, public_prices, threshold=0.02)
+            kill_switch_triggered = not all(validation.values())
+        except Exception:
+            validation = {}
+            kill_switch_triggered = False
 
         mode = ScreenerMode[request.mode.upper()]
         screener.set_mode(mode)
 
-        stock_data = generate_screening_data(symbols=request.symbols or get_all_symbols())
+        symbols = request.symbols or get_all_symbols()
+        stock_data = generate_screening_data(symbols=symbols)
 
-        # Multi-version analysis: Champion vs Challenger
+        # Run champion/challenger analysis
         from dellmology.analysis.screener import ScreenerConfig, run_multi_version_analysis
         champion_config = ScreenerConfig(mode=mode)
-        # Challenger: tweak one parameter (e.g., min_technical_score)
         challenger_config = ScreenerConfig(mode=mode, min_technical_score=0.75)
         multi_results = run_multi_version_analysis(stock_data, champion_config, challenger_config)
 
-        # Use champion results for main response
-        response_results = [
-            StockScoreResponse(
-                symbol=r['symbol'],
-                score=r['score'],
-                rank=r['rank'],
-                technical_score=r['technical_score'],
-                flow_score=r['flow_score'],
-                pressure_score=r['pressure_score'],
-                volatility_score=r['volatility_score'],
-                anomaly_score=r['anomaly_score'],
-                ai_consensus=r['ai_consensus'],
-                current_price=r['current_price'],
-                volatility_percent=r['volatility_percent'],
-                haka_ratio=r['haka_ratio'],
-                broker_net_value=r['broker_net_value'],
-                top_broker=r['top_broker'],
-                risk_reward_ratio=r['risk_reward_ratio'],
-                recommendation=("BLOCKED" if kill_switch_triggered else r['recommendation']),
-                reason=("Golden-record validation failed" if kill_switch_triggered else r['reason']),
-                pattern_matches=r['pattern_matches'],
-                anomalies_detected=r['anomalies_detected'],
-            )
-            for r in multi_results['champion']
-        ]
+        # Build response from champion results
+        response_results = []
+        for r in multi_results.get('champion', []):
+            # r is a dict produced by asdict from StockScore
+            response_results.append(StockScoreResponse(
+                symbol=r.get('symbol'),
+                score=r.get('score', 0.0),
+                rank=r.get('rank', 0),
+                technical_score=r.get('technical_score', 0.0),
+                flow_score=r.get('flow_score', 0.0),
+                pressure_score=r.get('pressure_score', 0.0),
+                volatility_score=r.get('volatility_score', 0.0),
+                anomaly_score=r.get('anomaly_score', 0.0),
+                ai_consensus=r.get('ai_consensus', 0.0),
+                current_price=r.get('current_price', 0.0),
+                volatility_percent=r.get('volatility_percent', 0.0),
+                haka_ratio=r.get('haka_ratio', 0.0),
+                broker_net_value=r.get('broker_net_value', 0),
+                top_broker=r.get('top_broker', ''),
+                risk_reward_ratio=r.get('risk_reward_ratio', 0.0),
+                recommendation=("BLOCKED" if kill_switch_triggered else r.get('recommendation', 'HOLD')),
+                reason=("Golden-record validation failed" if kill_switch_triggered else r.get('reason', '')),
+                pattern_matches=r.get('pattern_matches', []),
+                anomalies_detected=r.get('anomalies_detected', []),
+            ))
 
         stats = {
-            "avg_score": sum(r.score for r in response_results) / (len(response_results) or 1),
-            "max_score": max((r.score for r in response_results), default=0),
-            "min_score": min((r.score for r in response_results), default=0),
-            "bullish_count": sum(1 for r in response_results if "BUY" in r.recommendation),
-            "bearish_count": sum(1 for r in response_results if "SELL" in r.recommendation),
-            "avg_volatility": sum(r.volatility_percent for r in response_results) / (len(response_results) or 1),
-            "avg_rr_ratio": sum(r.risk_reward_ratio for r in response_results) / (len(response_results) or 1),
+            "avg_score": sum(rr.score for rr in response_results) / (len(response_results) or 1),
+            "max_score": max((rr.score for rr in response_results), default=0),
+            "min_score": min((rr.score for rr in response_results), default=0),
+            "bullish_count": sum(1 for rr in response_results if "BUY" in rr.recommendation),
+            "bearish_count": sum(1 for rr in response_results if "SELL" in rr.recommendation),
+            "avg_volatility": sum(rr.volatility_percent for rr in response_results) / (len(response_results) or 1),
+            "avg_rr_ratio": sum(rr.risk_reward_ratio for rr in response_results) / (len(response_results) or 1),
             "kill_switch_triggered": kill_switch_triggered,
             "golden_record_validation": validation,
-            "multi_version_comparison": multi_results['comparison'],
-            "model_confidence": model_confidence,
+            "multi_version_comparison": multi_results.get('comparison', []),
         }
 
         ai_text = None
-        if request.include_analysis:
+        if request.include_analysis and response_results:
             try:
                 from dellmology.intelligence.ai_narrative import generate_narrative
                 ai_text = generate_narrative({
@@ -206,24 +216,28 @@ async def run_screening(request: ScreeningRequest):
                 logger.warning(f"AI narrative generation failed: {ex}")
                 ai_text = None
 
-        # Save snapshot for each actionable signal
-        for r in response_results:
-            if r.recommendation in ["BUY", "SELL", "STRONG_BUY", "STRONG_SELL"]:
-                snapshot = {
-                    "symbol": r.symbol,
-                    "price": r.current_price,
-                    "z_score": r.flow_score,
-                    "cnn_pattern": r.pattern_matches,
-                    "broker_net": r.broker_net_value,
-                    "gemini_narrative": ai_text,
-                    "score": r.score,
-                    "volatility": r.volatility_percent,
-                    "anomalies": r.anomalies_detected,
-                    "timestamp": datetime.now().isoformat(),
-                    "recommendation": r.recommendation,
-                    "reason": r.reason
-                }
-                save_signal_snapshot(snapshot, signal_type=r.recommendation)
+        # Save snapshots for actionable signals
+        try:
+            from dellmology.utils.db_utils import save_signal_snapshot
+            for r in response_results:
+                if r.recommendation in ["BUY", "SELL", "STRONG_BUY", "STRONG_SELL"]:
+                    snapshot = {
+                        "symbol": r.symbol,
+                        "price": r.current_price,
+                        "z_score": r.flow_score,
+                        "cnn_pattern": r.pattern_matches,
+                        "broker_net": r.broker_net_value,
+                        "gemini_narrative": ai_text,
+                        "score": r.score,
+                        "volatility": r.volatility_percent,
+                        "anomalies": r.anomalies_detected,
+                        "timestamp": datetime.now().isoformat(),
+                        "recommendation": r.recommendation,
+                        "reason": r.reason,
+                    }
+                    save_signal_snapshot(snapshot, signal_type=r.recommendation)
+        except Exception:
+            pass
 
         final_resp = ScreeningResponse(
             mode=request.mode,
@@ -234,100 +248,7 @@ async def run_screening(request: ScreeningRequest):
             statistics=stats,
             ai_narrative=ai_text,
         )
-        # convert to plain data before caching (models aren't JSON serializable)
-        cache_set(cache_key, final_resp.dict(), ttl=30)
-        return final_resp
-    except Exception as e:
-        logger.error(f"Error during screening: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    try:
-        cache_key = f"screen:{request.mode}:{request.min_score}:{','.join(request.symbols or [])}"
-        cached = cache_get(cache_key)
-        if cached is not None:
-            return cached
 
-        # Golden-record validation (anchor stocks)
-        from dellmology.data_pipeline.global_market_aggregator import fetch_anchor_prices
-        from dellmology.utils.db_utils import validate_golden_record
-        anchor_symbols = ["BBCA", "ASII", "TLKM"]
-        public_prices = fetch_anchor_prices([s + ".JK" for s in anchor_symbols])
-        validation = validate_golden_record(anchor_symbols, public_prices, threshold=0.02)
-        kill_switch_triggered = not all(validation.values())
-
-        mode = ScreenerMode[request.mode.upper()]
-        screener.set_mode(mode)
-
-        stock_data = generate_screening_data(symbols=request.symbols or get_all_symbols())
-
-        # Multi-version analysis: Champion vs Challenger
-        from dellmology.analysis.screener import ScreenerConfig, run_multi_version_analysis
-        champion_config = ScreenerConfig(mode=mode)
-        # Challenger: tweak one parameter (e.g., min_technical_score)
-        challenger_config = ScreenerConfig(mode=mode, min_technical_score=0.75)
-        multi_results = run_multi_version_analysis(stock_data, champion_config, challenger_config)
-
-        # Use champion results for main response
-        response_results = [
-            StockScoreResponse(
-                symbol=r['symbol'],
-                score=r['score'],
-                rank=r['rank'],
-                technical_score=r['technical_score'],
-                flow_score=r['flow_score'],
-                pressure_score=r['pressure_score'],
-                volatility_score=r['volatility_score'],
-                anomaly_score=r['anomaly_score'],
-                ai_consensus=r['ai_consensus'],
-                current_price=r['current_price'],
-                volatility_percent=r['volatility_percent'],
-                haka_ratio=r['haka_ratio'],
-                broker_net_value=r['broker_net_value'],
-                top_broker=r['top_broker'],
-                risk_reward_ratio=r['risk_reward_ratio'],
-                recommendation=("BLOCKED" if kill_switch_triggered else r['recommendation']),
-                reason=("Golden-record validation failed" if kill_switch_triggered else r['reason']),
-                pattern_matches=r['pattern_matches'],
-                anomalies_detected=r['anomalies_detected'],
-            )
-            for r in multi_results['champion']
-        ]
-
-        stats = {
-            "avg_score": sum(r.score for r in response_results) / (len(response_results) or 1),
-            "max_score": max((r.score for r in response_results), default=0),
-            "min_score": min((r.score for r in response_results), default=0),
-            "bullish_count": sum(1 for r in response_results if "BUY" in r.recommendation),
-            "bearish_count": sum(1 for r in response_results if "SELL" in r.recommendation),
-            "avg_volatility": sum(r.volatility_percent for r in response_results) / (len(response_results) or 1),
-            "avg_rr_ratio": sum(r.risk_reward_ratio for r in response_results) / (len(response_results) or 1),
-            "kill_switch_triggered": kill_switch_triggered,
-            "golden_record_validation": validation,
-            "multi_version_comparison": multi_results['comparison'],
-        }
-
-        ai_text = None
-        if request.include_analysis:
-            try:
-                from dellmology.intelligence.ai_narrative import generate_narrative
-                ai_text = generate_narrative({
-                    "stats": stats,
-                    "top_pick": response_results[0] if response_results else None,
-                    "results": [r.dict() for r in response_results],
-                }, symbol=response_results[0].symbol if response_results else None)
-            except Exception as ex:
-                logger.warning(f"AI narrative generation failed: {ex}")
-                ai_text = None
-
-        final_resp = ScreeningResponse(
-            mode=request.mode,
-            timestamp=datetime.now().isoformat(),
-            total_scanned=len(response_results),
-            results=response_results,
-            top_pick=response_results[0] if response_results else None,
-            statistics=stats,
-            ai_narrative=ai_text,
-        )
-        # convert to plain data before caching (models aren't JSON serializable)
         cache_set(cache_key, final_resp.dict(), ttl=30)
         return final_resp
     except Exception as e:
