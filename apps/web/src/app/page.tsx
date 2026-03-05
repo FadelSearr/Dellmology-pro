@@ -349,6 +349,7 @@ interface RuntimeRiskConfig {
   cooling_off_drawdown_pct?: number;
   cooling_off_hours?: number;
   cooling_off_required_breaches?: number;
+  recovery_escalation_ack_minutes?: number;
 }
 
 interface RuntimeRiskDraft {
@@ -362,6 +363,7 @@ interface RuntimeRiskDraft {
   coolingOffDrawdownPct: string;
   coolingOffHours: string;
   coolingOffRequiredBreaches: string;
+  recoveryEscalationAckMinutes: string;
 }
 
 interface RiskAuditInfo {
@@ -703,7 +705,6 @@ const CHAMPION_CHALLENGER_ALERT_GAP_PCT = envNumber('NEXT_PUBLIC_CHAMPION_CHALLE
 const WASH_SALE_SCORE_ALERT = envNumber('NEXT_PUBLIC_WASH_SALE_SCORE_ALERT', 60);
 const MODEL_CONFIDENCE_TRACK_WINDOW = Math.max(5, Math.floor(envNumber('NEXT_PUBLIC_MODEL_CONFIDENCE_TRACK_WINDOW', 10)));
 const MODEL_CONFIDENCE_TRACK_MAX_MISS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_MODEL_CONFIDENCE_TRACK_MAX_MISS', 7)));
-const RECOVERY_ESCALATION_ACK_COOLDOWN_MS = 10 * 60 * 1000;
 const RECOVERY_ESCALATION_ACK_STORAGE_KEY = 'dellmology.recoveryEscalationAck.v1';
 const PERSONAL_RESEARCH_ONLY_DISCLAIMER = 'Analisis ini adalah pengolahan data statistik murni, bukan ajakan beli/jual.';
 
@@ -717,6 +718,7 @@ const ROADMAP_DEFAULTS = {
   coolingOffDrawdownPct: 5,
   coolingOffHours: 24,
   coolingOffRequiredBreaches: 2,
+  recoveryEscalationAckMinutes: 10,
   systemicRiskHardGate: true,
 } as const;
 
@@ -3662,6 +3664,7 @@ function BottomPanel({
   runtimeCoolingOffDrawdownPct,
   runtimeCoolingOffHours,
   runtimeCoolingOffRequiredBreaches,
+  runtimeRecoveryEscalationAckMinutes,
   riskDraft,
   onRiskDraftChange,
   onApplyRiskConfig,
@@ -3726,6 +3729,7 @@ function BottomPanel({
   runtimeCoolingOffDrawdownPct: number;
   runtimeCoolingOffHours: number;
   runtimeCoolingOffRequiredBreaches: number;
+  runtimeRecoveryEscalationAckMinutes: number;
   riskDraft: RuntimeRiskDraft;
   onRiskDraftChange: (key: keyof RuntimeRiskDraft, value: string) => void;
   onApplyRiskConfig: () => void;
@@ -4126,7 +4130,7 @@ function BottomPanel({
                 {configDrift ? 'CONFIG DRIFT: runtime thresholds differ from roadmap defaults' : 'CONFIG BASELINE: roadmap defaults'}
               </div>
               <div className="mt-1 text-slate-500">
-                {`Cfg KS@${runtimeIhsgDrop.toFixed(2)}% | UPS N/K ${runtimeNormalUps}/${runtimeRiskUps} | Cap N/K ${(runtimeParticipationCapNormalPct * 100).toFixed(1)}%/${(runtimeParticipationCapRiskPct * 100).toFixed(1)}% | BetaThr ${runtimeSystemicRiskBetaThreshold.toFixed(2)} | AuditStale ${runtimeRiskAuditStaleHours.toFixed(0)}h | CoolOff DD ${runtimeCoolingOffDrawdownPct.toFixed(1)}% x${runtimeCoolingOffRequiredBreaches} / ${runtimeCoolingOffHours.toFixed(0)}h | BetaGate ${SYSTEMIC_RISK_HARD_GATE ? 'ON' : 'OFF'} | SRC ${runtimeConfigSource} | RULE ${runtimeRuleEngineMode}:${runtimeRuleEngineVersion}`}
+                {`Cfg KS@${runtimeIhsgDrop.toFixed(2)}% | UPS N/K ${runtimeNormalUps}/${runtimeRiskUps} | Cap N/K ${(runtimeParticipationCapNormalPct * 100).toFixed(1)}%/${(runtimeParticipationCapRiskPct * 100).toFixed(1)}% | BetaThr ${runtimeSystemicRiskBetaThreshold.toFixed(2)} | AuditStale ${runtimeRiskAuditStaleHours.toFixed(0)}h | CoolOff DD ${runtimeCoolingOffDrawdownPct.toFixed(1)}% x${runtimeCoolingOffRequiredBreaches} / ${runtimeCoolingOffHours.toFixed(0)}h | RecAck ${runtimeRecoveryEscalationAckMinutes.toFixed(0)}m | BetaGate ${SYSTEMIC_RISK_HARD_GATE ? 'ON' : 'OFF'} | SRC ${runtimeConfigSource} | RULE ${runtimeRuleEngineMode}:${runtimeRuleEngineVersion}`}
               </div>
               <div className="mt-2 border border-slate-800 rounded px-2 py-2 bg-slate-900/30 space-y-1">
                 <div className="text-[9px] text-slate-500 uppercase tracking-wider">Risk Config Editor</div>
@@ -4197,6 +4201,12 @@ function BottomPanel({
                     onChange={(event) => onRiskDraftChange('coolingOffHours', event.target.value)}
                     className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
                     placeholder="CoolOff Hours"
+                  />
+                  <input
+                    value={riskDraft.recoveryEscalationAckMinutes}
+                    onChange={(event) => onRiskDraftChange('recoveryEscalationAckMinutes', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="Rec Ack (m)"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-1">
@@ -4679,6 +4689,7 @@ export default function Home() {
     coolingOffDrawdownPct: String(ROADMAP_DEFAULTS.coolingOffDrawdownPct),
     coolingOffHours: String(ROADMAP_DEFAULTS.coolingOffHours),
     coolingOffRequiredBreaches: String(ROADMAP_DEFAULTS.coolingOffRequiredBreaches),
+    recoveryEscalationAckMinutes: String(ROADMAP_DEFAULTS.recoveryEscalationAckMinutes),
   });
   const [riskDraftDirty, setRiskDraftDirty] = useState(false);
   const [riskConfigLocked, setRiskConfigLocked] = useState(false);
@@ -6323,6 +6334,9 @@ export default function Home() {
   const runtimeCoolingOffRequiredBreaches = Number(
     runtimeRiskConfig?.cooling_off_required_breaches ?? ROADMAP_DEFAULTS.coolingOffRequiredBreaches,
   );
+  const runtimeRecoveryEscalationAckMinutes = Number(
+    runtimeRiskConfig?.recovery_escalation_ack_minutes ?? ROADMAP_DEFAULTS.recoveryEscalationAckMinutes,
+  );
   const runtimeConfigSource: 'DB' | 'ENV' = runtimeRiskConfig ? 'DB' : 'ENV';
   const lastRiskAuditAgeMs = lastRiskAudit.createdAt ? Math.max(0, Date.now() - new Date(lastRiskAudit.createdAt).getTime()) : null;
   const staleAuditThresholdMs = Math.max(1, runtimeRiskAuditStaleHours) * 60 * 60 * 1000;
@@ -6341,6 +6355,7 @@ export default function Home() {
     runtimeCoolingOffDrawdownPct !== ROADMAP_DEFAULTS.coolingOffDrawdownPct ||
     runtimeCoolingOffHours !== ROADMAP_DEFAULTS.coolingOffHours ||
     runtimeCoolingOffRequiredBreaches !== ROADMAP_DEFAULTS.coolingOffRequiredBreaches ||
+    runtimeRecoveryEscalationAckMinutes !== ROADMAP_DEFAULTS.recoveryEscalationAckMinutes ||
     SYSTEMIC_RISK_HARD_GATE !== ROADMAP_DEFAULTS.systemicRiskHardGate;
   const runtimeRuleEngineMode: 'BASELINE' | 'CUSTOM' = configDrift ? 'CUSTOM' : 'BASELINE';
   const runtimeRuleEngineVersion = buildRuleEngineVersion(runtimeConfigSource, [
@@ -6354,6 +6369,7 @@ export default function Home() {
     runtimeCoolingOffDrawdownPct,
     runtimeCoolingOffHours,
     runtimeCoolingOffRequiredBreaches,
+    runtimeRecoveryEscalationAckMinutes,
     SYSTEMIC_RISK_HARD_GATE ? 1 : 0,
   ]);
 
@@ -6496,12 +6512,14 @@ export default function Home() {
       coolingOffDrawdownPct: String(runtimeCoolingOffDrawdownPct),
       coolingOffHours: String(runtimeCoolingOffHours),
       coolingOffRequiredBreaches: String(runtimeCoolingOffRequiredBreaches),
+      recoveryEscalationAckMinutes: String(runtimeRecoveryEscalationAckMinutes),
     });
   }, [
     riskDraftDirty,
     runtimeCoolingOffDrawdownPct,
     runtimeCoolingOffHours,
     runtimeCoolingOffRequiredBreaches,
+    runtimeRecoveryEscalationAckMinutes,
     runtimeIhsgDrop,
     runtimeNormalUps,
     runtimeParticipationCapNormalPct,
@@ -6528,6 +6546,7 @@ export default function Home() {
       coolingOffDrawdownPct: String(runtimeCoolingOffDrawdownPct),
       coolingOffHours: String(runtimeCoolingOffHours),
       coolingOffRequiredBreaches: String(runtimeCoolingOffRequiredBreaches),
+      recoveryEscalationAckMinutes: String(runtimeRecoveryEscalationAckMinutes),
     });
     setRiskDraftDirty(false);
     setActionState({ busy: false, message: 'Risk draft reset to runtime config' });
@@ -6535,6 +6554,7 @@ export default function Home() {
     runtimeCoolingOffDrawdownPct,
     runtimeCoolingOffHours,
     runtimeCoolingOffRequiredBreaches,
+    runtimeRecoveryEscalationAckMinutes,
     runtimeIhsgDrop,
     runtimeNormalUps,
     runtimeParticipationCapNormalPct,
@@ -6555,6 +6575,7 @@ export default function Home() {
     const coolingOffDrawdownPct = Number(riskDraft.coolingOffDrawdownPct);
     const coolingOffHours = Number(riskDraft.coolingOffHours);
     const coolingOffRequiredBreaches = Number(riskDraft.coolingOffRequiredBreaches);
+    const recoveryEscalationAckMinutes = Number(riskDraft.recoveryEscalationAckMinutes);
 
     const values = [
       ihsgRiskTriggerPct,
@@ -6567,6 +6588,7 @@ export default function Home() {
       coolingOffDrawdownPct,
       coolingOffHours,
       coolingOffRequiredBreaches,
+      recoveryEscalationAckMinutes,
     ];
 
     if (values.some((item) => !Number.isFinite(item))) {
@@ -6594,6 +6616,7 @@ export default function Home() {
           cooling_off_drawdown_pct: coolingOffDrawdownPct,
           cooling_off_hours: coolingOffHours,
           cooling_off_required_breaches: coolingOffRequiredBreaches,
+          recovery_escalation_ack_minutes: recoveryEscalationAckMinutes,
         }),
       });
 
@@ -7660,11 +7683,12 @@ export default function Home() {
           .join('  •  ')
       : 'No recent recovery events';
   const acknowledgeRecoveryEscalation = useCallback(() => {
+    const ackMinutes = Math.max(1, Math.floor(runtimeRecoveryEscalationAckMinutes));
     setRecoveryEscalationAck({
       signature: recoveryEscalationSignature,
-      silencedUntil: new Date(Date.now() + RECOVERY_ESCALATION_ACK_COOLDOWN_MS).toISOString(),
+      silencedUntil: new Date(Date.now() + ackMinutes * 60 * 1000).toISOString(),
     });
-  }, [recoveryEscalationSignature]);
+  }, [recoveryEscalationSignature, runtimeRecoveryEscalationAckMinutes]);
   const combatCriticalLocks = buildActiveLockGuards({
     coolingOffActive: coolingOff.active,
     coolingRemainingLabel,
@@ -7776,9 +7800,9 @@ export default function Home() {
             <button
               onClick={acknowledgeRecoveryEscalation}
               className="text-[10px] font-bold px-2.5 py-1 rounded border border-slate-200/20 bg-slate-900/30 text-slate-100 hover:bg-slate-900/45"
-              title="Silence this exact escalation signature for 10 minutes"
+              title={`Silence this exact escalation signature for ${Math.max(1, Math.floor(runtimeRecoveryEscalationAckMinutes))} minutes`}
             >
-              Ack 10m
+              {`Ack ${Math.max(1, Math.floor(runtimeRecoveryEscalationAckMinutes))}m`}
             </button>
             <button
               onClick={resetDeadman}
@@ -7958,6 +7982,7 @@ export default function Home() {
           runtimeCoolingOffDrawdownPct={runtimeCoolingOffDrawdownPct}
           runtimeCoolingOffHours={runtimeCoolingOffHours}
           runtimeCoolingOffRequiredBreaches={runtimeCoolingOffRequiredBreaches}
+          runtimeRecoveryEscalationAckMinutes={runtimeRecoveryEscalationAckMinutes}
           riskDraft={riskDraft}
           onRiskDraftChange={onRiskDraftChange}
           onApplyRiskConfig={onApplyRiskConfig}
