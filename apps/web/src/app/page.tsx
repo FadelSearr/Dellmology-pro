@@ -116,6 +116,8 @@ interface WatchlistItem {
   change: string;
   score: number;
   status: string;
+  flowQuality?: 'STRONG' | 'WATCH' | 'WEAK';
+  setupTag?: 'SCALP' | 'SWING' | 'RANGE';
 }
 
 interface MarketIntelResponse {
@@ -2371,6 +2373,8 @@ function LeftSidebar({
   currentPrice,
   priceChangePct,
   coolingOffActive,
+  marketRegimeLabel,
+  minUpsForLong,
   onWatchlistUpdate,
 }: {
   activeSymbol: string;
@@ -2378,6 +2382,8 @@ function LeftSidebar({
   currentPrice: number;
   priceChangePct: number;
   coolingOffActive: boolean;
+  marketRegimeLabel: MarketRegimeLabel;
+  minUpsForLong: number;
   onWatchlistUpdate: (items: WatchlistItem[]) => void;
 }) {
   const [activeTab, setActiveTab] = useState<'day' | 'swing' | 'custom'>('day');
@@ -2437,7 +2443,49 @@ function LeftSidebar({
           const price = Number(row.last_price ?? row.current_price ?? row.price ?? 0);
           const changePct = Number(row.change_pct ?? 0);
           const scoreRaw = Number(row.score ?? 0);
-          const score = Math.max(0, Math.min(100, Number.isFinite(scoreRaw) ? scoreRaw : 0));
+          const baseScore = Math.max(0, Math.min(100, Number.isFinite(scoreRaw) ? scoreRaw : 0));
+          const hakaRatio = Number(row.haka_ratio ?? 0);
+          const totalTrades = Number(row.total_trades ?? 0);
+          const netAccumulation = Number(row.total_net_accumulation ?? 0);
+          const regimeModifier =
+            activeTab === 'day'
+              ? marketRegimeLabel === 'UPTREND'
+                ? 4
+                : marketRegimeLabel === 'DOWNTREND'
+                  ? -10
+                  : -4
+              : activeTab === 'swing'
+                ? marketRegimeLabel === 'UPTREND'
+                  ? 6
+                  : marketRegimeLabel === 'DOWNTREND'
+                    ? -8
+                    : 0
+                : marketRegimeLabel === 'SIDEWAYS'
+                  ? 3
+                  : marketRegimeLabel === 'DOWNTREND'
+                    ? -6
+                    : 1;
+          const flowModifier =
+            activeTab === 'day'
+              ? hakaRatio >= 0.65 && totalTrades >= 30
+                ? 6
+                : hakaRatio >= 0.55 && totalTrades >= 20
+                  ? 0
+                  : -8
+              : activeTab === 'swing'
+                ? netAccumulation > 25_000_000_000
+                  ? 8
+                  : netAccumulation > 5_000_000_000
+                    ? 3
+                    : netAccumulation > 0
+                      ? 0
+                      : -10
+                : hakaRatio >= 0.55 && netAccumulation > 0
+                  ? 4
+                  : netAccumulation <= 0
+                    ? -6
+                    : 0;
+          const score = Math.max(0, Math.min(100, baseScore + regimeModifier + flowModifier));
           const status =
             typeof row.status === 'string' && row.status.trim().length > 0
               ? row.status
@@ -2446,12 +2494,33 @@ function LeftSidebar({
                 : activeTab === 'swing'
                   ? 'Swing Signal'
                   : 'Custom Range';
+          const flowQuality: 'STRONG' | 'WATCH' | 'WEAK' =
+            activeTab === 'day'
+              ? hakaRatio >= 0.65 && totalTrades >= 30
+                ? 'STRONG'
+                : hakaRatio >= 0.55
+                  ? 'WATCH'
+                  : 'WEAK'
+              : activeTab === 'swing'
+                ? netAccumulation > 5_000_000_000
+                  ? 'STRONG'
+                  : netAccumulation > 0
+                    ? 'WATCH'
+                    : 'WEAK'
+                : score >= 75
+                  ? 'STRONG'
+                  : score >= 55
+                    ? 'WATCH'
+                    : 'WEAK';
+          const setupTag: 'SCALP' | 'SWING' | 'RANGE' = activeTab === 'day' ? 'SCALP' : activeTab === 'swing' ? 'SWING' : 'RANGE';
           return {
             symbol,
             price: Number.isFinite(price) ? Math.round(price) : 0,
             change: `${changePct >= 0 ? '+' : ''}${Number.isFinite(changePct) ? changePct.toFixed(2) : '0.00'}%`,
             score,
-            status,
+            status: `${status} | Gate ${minUpsForLong} (${marketRegimeLabel})`,
+            flowQuality,
+            setupTag,
           };
         });
 
@@ -2470,7 +2539,7 @@ function LeftSidebar({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, activeSymbol, currentPrice, priceChangePct, customMinPrice, customMaxPrice, coolingOffActive]);
+  }, [activeTab, activeSymbol, currentPrice, priceChangePct, customMinPrice, customMaxPrice, coolingOffActive, marketRegimeLabel, minUpsForLong]);
 
   useEffect(() => {
     onWatchlistUpdate(watchlist);
@@ -2514,9 +2583,9 @@ function LeftSidebar({
           <span className={coolingOffActive ? 'text-amber-400' : 'text-cyan-500'}>{coolingOffActive ? 'Cooling-Off' : 'Active'}</span>
         </div>
         <div className="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2 rounded border border-slate-800/50">
-          {activeTab === 'day' && 'Detecting high volatility & HAKA dominance > 65%.'}
-          {activeTab === 'swing' && 'Scanning consistent accumulation & chart patterns.'}
-          {activeTab === 'custom' && `Custom filter active: Price ${Math.max(1, Number(customMinPrice) || 100)}-${Math.max(1, Number(customMaxPrice) || 500)} + mixed flow score.`}
+          {activeTab === 'day' && `Detecting high volatility & HAKA dominance > 65% (Regime ${marketRegimeLabel}, Gate ${minUpsForLong}).`}
+          {activeTab === 'swing' && `Scanning consistent accumulation & chart patterns (Regime ${marketRegimeLabel}, Gate ${minUpsForLong}).`}
+          {activeTab === 'custom' && `Custom filter active: Price ${Math.max(1, Number(customMinPrice) || 100)}-${Math.max(1, Number(customMaxPrice) || 500)} + mixed flow score (Regime ${marketRegimeLabel}).`}
           {screenerLoading ? ' Refreshing screener...' : ''}
         </div>
         {coolingOffActive ? <div className="text-[9px] text-amber-300 font-mono mt-1">{`${screenerLockReason}: tabs, custom range, and symbol switching disabled`}</div> : null}
@@ -2614,6 +2683,22 @@ function LeftSidebar({
                 </div>
                 <div className="text-[10px] text-slate-500 mt-0.5 font-mono">{item.status}</div>
                 <div className="mt-1 flex items-center gap-1 text-[9px] font-mono">
+                  <span
+                    className={cn(
+                      'px-1 py-0.5 rounded border',
+                      item.flowQuality === 'STRONG'
+                        ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                        : item.flowQuality === 'WATCH'
+                          ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                          : 'text-rose-300 border-rose-500/40 bg-rose-500/10',
+                    )}
+                    title="Flow quality from screener raw metrics"
+                  >
+                    {`FLOW ${item.flowQuality || 'WATCH'}`}
+                  </span>
+                  <span className="px-1 py-0.5 rounded border text-cyan-300 border-cyan-500/40 bg-cyan-500/10" title="Screener setup mode">
+                    {item.setupTag || 'SET'}
+                  </span>
                   <span
                     className={cn(
                       'px-1 py-0.5 rounded border',
@@ -8458,6 +8543,8 @@ export default function Home() {
           currentPrice={currentPrice}
           priceChangePct={priceChange}
           coolingOffActive={coolingOff.active}
+          marketRegimeLabel={marketRegime.label}
+          minUpsForLong={minUpsForLong}
           onWatchlistUpdate={setWatchlist}
         />
         <CenterPanel
