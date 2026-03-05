@@ -980,6 +980,7 @@ function buildActionDockBlockReasons(params: {
   engineHeartbeatTimeoutSeconds: number;
   dataSanityWarning: boolean;
   dataSanityReason: string | null;
+  volumeFingerprintHardReset: boolean;
   riskConfigLocked: boolean;
 }): ActionDockBlockReasons {
   const telegram: string[] = [];
@@ -1013,6 +1014,10 @@ function buildActionDockBlockReasons(params: {
     const reason = `Data sanity warning${params.dataSanityReason ? ` (${params.dataSanityReason})` : ''}`;
     telegram.push(reason);
     backtest.push(reason);
+  }
+  if (params.volumeFingerprintHardReset) {
+    telegram.push('Statistical fingerprint fail (hard reset required)');
+    backtest.push('Statistical fingerprint fail (hard reset required)');
   }
   if (params.riskConfigLocked) {
     telegram.push('Runtime risk config terkunci');
@@ -1238,6 +1243,7 @@ function buildActiveLockGuards(params: {
   modelConsensusPass: boolean;
   dataSanityWarning: boolean;
   dataSanityLockActive: boolean;
+  volumeFingerprintHardReset: boolean;
 }) {
   return [
     params.coolingOffActive ? `Cooling-off ${params.coolingRemainingLabel}` : null,
@@ -1248,6 +1254,7 @@ function buildActiveLockGuards(params: {
     params.killSwitchActive ? `Market kill-switch ${params.ihsgChangePct.toFixed(2)}%` : null,
     !params.modelConsensusPass ? 'Model consensus confusion' : null,
     params.dataSanityWarning || params.dataSanityLockActive ? 'Data sanity warning/lock' : null,
+    params.volumeFingerprintHardReset ? 'Volume fingerprint hard-reset lock' : null,
   ].filter((value): value is string => value !== null);
 }
 
@@ -1496,6 +1503,7 @@ function TopNavigation({
     modelConsensusPass: modelConsensus.pass,
     dataSanityWarning: dataSanity.warning,
     dataSanityLockActive: dataSanity.lockActive,
+    volumeFingerprintHardReset: volumeFingerprint.hardReset,
   });
   const lockGuardTone =
     activeLockGuards.length > 0
@@ -3598,6 +3606,7 @@ function BottomPanel({
   modelConsensus,
   deploymentGate,
   systemKillSwitch,
+  volumeFingerprint,
   backtestSummary,
   signalAudit,
 }: {
@@ -3655,6 +3664,7 @@ function BottomPanel({
   coolingOff: CoolingOffState;
   immutableAuditAlert: ImmutableAuditAlertState;
   dataSanity: DataSanityState;
+  volumeFingerprint: VolumeFingerprintState;
   modelConsensus: ModelConsensus;
   deploymentGate: DeploymentGateState;
   systemKillSwitch: SystemKillSwitchState;
@@ -3712,9 +3722,23 @@ function BottomPanel({
   const coolingLastTriggerLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
   const engineHeartbeatLocked = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
   const telegramBlocked =
-    actionState.busy || coolingOff.active || !modelConsensus.pass || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning || riskConfigLocked;
+    actionState.busy ||
+    coolingOff.active ||
+    !modelConsensus.pass ||
+    systemKillSwitch.active ||
+    engineHeartbeatLocked ||
+    dataSanity.warning ||
+    volumeFingerprint.hardReset ||
+    riskConfigLocked;
   const backtestBlocked =
-    actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning || riskConfigLocked;
+    actionState.busy ||
+    coolingOff.active ||
+    deploymentGate.blocked ||
+    systemKillSwitch.active ||
+    engineHeartbeatLocked ||
+    dataSanity.warning ||
+    volumeFingerprint.hardReset ||
+    riskConfigLocked;
   const deploymentGateTopRuleEngine =
     deploymentGate.regression?.ruleEngineHealth.find((row) => row.mismatches > 0) || deploymentGate.regression?.ruleEngineHealth[0] || null;
   const technicalTone =
@@ -3755,6 +3779,7 @@ function BottomPanel({
     engineHeartbeatTimeoutSeconds: engineHeartbeat.timeoutSeconds,
     dataSanityWarning: dataSanity.warning,
     dataSanityReason: dataSanity.reason,
+    volumeFingerprintHardReset: volumeFingerprint.hardReset,
     riskConfigLocked,
   });
   const globalLockGuards = buildActiveLockGuards({
@@ -3770,6 +3795,7 @@ function BottomPanel({
     modelConsensusPass: modelConsensus.pass,
     dataSanityWarning: dataSanity.warning,
     dataSanityLockActive: dataSanity.lockActive,
+    volumeFingerprintHardReset: volumeFingerprint.hardReset,
   });
   const globalLockDetail = globalLockGuards.join(' | ');
   const telegramLockDetail = actionDockBlockReasons.telegram.join(' | ');
@@ -4754,11 +4780,15 @@ export default function Home() {
       setActionState({ busy: false, message: 'Screener locked: cooling-off active' });
       return;
     }
+    if (volumeFingerprint.hardReset) {
+      setActionState({ busy: false, message: 'Screener locked: statistical fingerprint fail (hard reset required)' });
+      return;
+    }
     const value = symbolInput.trim().toUpperCase();
     if (value.length > 0) {
       setActiveSymbol(value);
     }
-  }, [coolingOff.active, symbolInput, systemKillSwitch.active, systemKillSwitch.reason]);
+  }, [coolingOff.active, symbolInput, systemKillSwitch.active, systemKillSwitch.reason, volumeFingerprint.hardReset]);
 
   const fetchDashboard = useCallback(async () => {
     const started = performance.now();
@@ -7147,6 +7177,7 @@ export default function Home() {
     modelConsensusPass: modelConsensus.pass,
     dataSanityWarning: dataSanity.warning,
     dataSanityLockActive: dataSanity.lockActive,
+    volumeFingerprintHardReset: volumeFingerprint.hardReset,
   });
   const combatRiskTone =
     combatCriticalLocks.length > 0
@@ -7360,6 +7391,7 @@ export default function Home() {
           coolingOff={coolingOff}
           immutableAuditAlert={immutableAuditAlert}
           dataSanity={dataSanity}
+          volumeFingerprint={volumeFingerprint}
           modelConsensus={modelConsensus}
           deploymentGate={deploymentGate}
           systemKillSwitch={systemKillSwitch}
