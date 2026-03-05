@@ -295,6 +295,8 @@ interface RecoveryAttemptTelemetry {
   }>;
 }
 
+type RecoveryTelemetrySource = 'deadman' | 'cooling-off' | 'deploy-gate';
+
 interface TokenTelemetry {
   status: 'fresh' | 'expiring' | 'expired' | 'missing';
   syncReason: string | null;
@@ -3625,6 +3627,8 @@ function BottomPanel({
   backtestSummary,
   signalAudit,
   recoveryTelemetry,
+  recoveryTelemetrySource,
+  onRecoveryTelemetrySourceChange,
 }: {
   narrative: string;
   adversarialNarrative: AdversarialNarrative;
@@ -3687,6 +3691,8 @@ function BottomPanel({
   backtestSummary: BacktestSummaryState | null;
   signalAudit: SignalAuditState;
   recoveryTelemetry: RecoveryAttemptTelemetry;
+  recoveryTelemetrySource: RecoveryTelemetrySource;
+  onRecoveryTelemetrySourceChange: (source: RecoveryTelemetrySource) => void;
 }) {
   const label = confidenceTracking.warning ? 'LOW' : confidence?.confidence_label || 'MEDIUM';
   const accuracy = confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct : Number(confidence?.accuracy_pct || 0);
@@ -4312,7 +4318,19 @@ function BottomPanel({
             </div>
           ) : null}
           <div className="border border-slate-800 rounded px-2 py-1 bg-slate-900/40 text-[9px] font-mono text-slate-400 space-y-1">
-            <div className="text-slate-500 uppercase tracking-wider">Recovery Telemetry</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-slate-500 uppercase tracking-wider">{`Recovery Telemetry (${recoveryTelemetrySource.toUpperCase()})`}</div>
+              <select
+                value={recoveryTelemetrySource}
+                onChange={(event) => onRecoveryTelemetrySourceChange(event.target.value as RecoveryTelemetrySource)}
+                className="bg-slate-950 border border-slate-800 text-slate-400 text-[9px] px-1 py-0.5 rounded"
+                title="Select telemetry source"
+              >
+                <option value="deadman">deadman</option>
+                <option value="cooling-off">cooling-off</option>
+                <option value="deploy-gate">deploy-gate</option>
+              </select>
+            </div>
             <div>{`Attempt ${recoveryTelemetry.attempts} | OK ${recoveryTelemetry.successes} | FAIL ${recoveryTelemetry.failures}`}</div>
             <div
               className={cn(
@@ -4642,6 +4660,7 @@ export default function Home() {
     checkedAt: null,
   });
   const [deadmanResetCooldown, setDeadmanResetCooldown] = useState(0);
+  const [recoveryTelemetrySource, setRecoveryTelemetrySource] = useState<RecoveryTelemetrySource>('deadman');
   const [recoveryTelemetry, setRecoveryTelemetry] = useState<RecoveryAttemptTelemetry>({
     attempts: 0,
     successes: 0,
@@ -4656,7 +4675,7 @@ export default function Home() {
 
     const hydrateRecoveryTelemetry = async () => {
       try {
-        const response = await fetch('/api/system-control/recovery-telemetry?source=deadman&limit=5');
+        const response = await fetch(`/api/system-control/recovery-telemetry?source=${encodeURIComponent(recoveryTelemetrySource)}&limit=5`);
         if (!response.ok) {
           return;
         }
@@ -4712,7 +4731,47 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [recoveryTelemetrySource]);
+
+  const appendRecoveryTelemetryEvent = useCallback(
+    (source: RecoveryTelemetrySource, status: 'SUCCESS' | 'FAILED' | 'LOCKED', message: string, cooldownSeconds: number | null) => {
+      const attemptAt = new Date().toISOString();
+
+      if (recoveryTelemetrySource === source) {
+        setRecoveryTelemetry((prev) => ({
+          ...prev,
+          attempts: prev.attempts + 1,
+          successes: prev.successes + (status === 'SUCCESS' ? 1 : 0),
+          failures: prev.failures + (status === 'SUCCESS' ? 0 : 1),
+          lastStatus: status,
+          lastAttemptAt: attemptAt,
+          recentLogs: [
+            {
+              id: `${attemptAt}-${source}-${status}`,
+              at: attemptAt,
+              status,
+              message,
+              cooldownSeconds,
+            },
+            ...prev.recentLogs,
+          ].slice(0, 5),
+        }));
+      }
+
+      void fetch('/api/system-control/recovery-telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source,
+          status,
+          message,
+          cooldown_seconds: cooldownSeconds,
+          symbol: activeSymbol,
+        }),
+      }).catch(() => undefined);
+    },
+    [activeSymbol, recoveryTelemetrySource],
+  );
   const [coolingOff, setCoolingOff] = useState<CoolingOffState>({
     active: false,
     activeUntil: null,
@@ -7157,51 +7216,6 @@ export default function Home() {
       return;
     }
 
-    setRecoveryTelemetry((prev) => ({
-      ...prev,
-      attempts: prev.attempts + 1,
-      lastAttemptAt: new Date().toISOString(),
-      lastStatus: 'IDLE',
-    }));
-
-    const appendRecoveryLog = (
-      status: 'SUCCESS' | 'FAILED' | 'LOCKED',
-      message: string,
-      cooldownSeconds: number | null,
-    ) => {
-      const attemptAt = new Date().toISOString();
-      const eventPayload = {
-        source: 'deadman',
-        status,
-        message,
-        cooldown_seconds: cooldownSeconds,
-        symbol: activeSymbol,
-      };
-      setRecoveryTelemetry((prev) => ({
-        ...prev,
-        successes: prev.successes + (status === 'SUCCESS' ? 1 : 0),
-        failures: prev.failures + (status === 'SUCCESS' ? 0 : 1),
-        lastStatus: status,
-        lastAttemptAt: attemptAt,
-        recentLogs: [
-          {
-            id: `${attemptAt}-${status}`,
-            at: attemptAt,
-            status,
-            message,
-            cooldownSeconds,
-          },
-          ...prev.recentLogs,
-        ].slice(0, 5),
-      }));
-
-      void fetch('/api/system-control/recovery-telemetry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(eventPayload),
-      }).catch(() => undefined);
-    };
-
     let attemptLogged = false;
 
     setActionState({ busy: true, message: 'Resetting deadman state...' });
@@ -7213,7 +7227,7 @@ export default function Home() {
       if (response.status === 423) {
         const lockedMessage = body.error || 'immutable audit chain lock active';
         setActionState({ busy: false, message: `Deadman reset locked: ${lockedMessage}` });
-        appendRecoveryLog('LOCKED', lockedMessage, null);
+        appendRecoveryTelemetryEvent('deadman', 'LOCKED', lockedMessage, null);
         attemptLogged = true;
         return;
       }
@@ -7225,7 +7239,7 @@ export default function Home() {
           setDeadmanResetCooldown(Math.max(1, Math.floor(body.retry_after_seconds)));
         }
         const failedMessage = body.error || 'Deadman reset failed';
-        appendRecoveryLog('FAILED', failedMessage, retryAfterSeconds);
+        appendRecoveryTelemetryEvent('deadman', 'FAILED', failedMessage, retryAfterSeconds);
         attemptLogged = true;
         throw new Error(body.error || 'Deadman reset failed');
       }
@@ -7233,17 +7247,17 @@ export default function Home() {
       const successCooldown = typeof body.retry_after_seconds === 'number' ? Math.max(1, Math.floor(body.retry_after_seconds)) : 30;
       setDeadmanResetCooldown(successCooldown);
       setActionState({ busy: false, message: 'Deadman reset completed' });
-      appendRecoveryLog('SUCCESS', 'Deadman reset completed', successCooldown);
+      appendRecoveryTelemetryEvent('deadman', 'SUCCESS', 'Deadman reset completed', successCooldown);
       attemptLogged = true;
       void fetchDashboard();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Deadman reset failed';
       if (!attemptLogged) {
-        appendRecoveryLog('FAILED', message, null);
+        appendRecoveryTelemetryEvent('deadman', 'FAILED', message, null);
       }
       setActionState({ busy: false, message: `Deadman reset failed: ${message}` });
     }
-  }, [activeSymbol, deadmanResetCooldown, fetchDashboard]);
+  }, [appendRecoveryTelemetryEvent, deadmanResetCooldown, fetchDashboard]);
 
   const resetCoolingOff = useCallback(async () => {
     if (!coolingOff.active) {
@@ -7252,6 +7266,7 @@ export default function Home() {
     }
 
     setActionState({ busy: true, message: 'Resetting cooling-off lock...' });
+    let attemptLogged = false;
     try {
       const response = await fetch('/api/system-control/cooling-off', {
         method: 'POST',
@@ -7274,11 +7289,17 @@ export default function Home() {
       };
 
       if (response.status === 423) {
-        setActionState({ busy: false, message: `Cooling-off reset locked: ${body.error || 'immutable audit chain lock active'}` });
+        const lockedMessage = body.error || 'immutable audit chain lock active';
+        setActionState({ busy: false, message: `Cooling-off reset locked: ${lockedMessage}` });
+        appendRecoveryTelemetryEvent('cooling-off', 'LOCKED', lockedMessage, null);
+        attemptLogged = true;
         return;
       }
 
       if (!response.ok || !body.success) {
+        const failedMessage = body.error || 'Cooling-off reset failed';
+        appendRecoveryTelemetryEvent('cooling-off', 'FAILED', failedMessage, null);
+        attemptLogged = true;
         throw new Error(body.error || 'Cooling-off reset failed');
       }
 
@@ -7292,12 +7313,17 @@ export default function Home() {
       });
 
       setActionState({ busy: false, message: 'Cooling-off reset completed' });
+      appendRecoveryTelemetryEvent('cooling-off', 'SUCCESS', 'Cooling-off reset completed', null);
+      attemptLogged = true;
       void fetchDashboard();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Cooling-off reset failed';
+      if (!attemptLogged) {
+        appendRecoveryTelemetryEvent('cooling-off', 'FAILED', message, null);
+      }
       setActionState({ busy: false, message: `Cooling-off reset failed: ${message}` });
     }
-  }, [activeSymbol, coolingOff.active, fetchDashboard]);
+  }, [activeSymbol, appendRecoveryTelemetryEvent, coolingOff.active, fetchDashboard]);
 
   const resetDeploymentGate = useCallback(async () => {
     if (!deploymentGate.blocked) {
@@ -7306,6 +7332,7 @@ export default function Home() {
     }
 
     setActionState({ busy: true, message: 'Resetting deployment gate...' });
+    let attemptLogged = false;
     try {
       const response = await fetch('/api/system-control/deployment-gate', {
         method: 'POST',
@@ -7325,11 +7352,17 @@ export default function Home() {
       };
 
       if (response.status === 423) {
-        setActionState({ busy: false, message: `Deployment gate reset locked: ${body.error || 'immutable audit chain lock active'}` });
+        const lockedMessage = body.error || 'immutable audit chain lock active';
+        setActionState({ busy: false, message: `Deployment gate reset locked: ${lockedMessage}` });
+        appendRecoveryTelemetryEvent('deploy-gate', 'LOCKED', lockedMessage, null);
+        attemptLogged = true;
         return;
       }
 
       if (!response.ok || !body.success) {
+        const failedMessage = body.error || 'Deployment gate reset failed';
+        appendRecoveryTelemetryEvent('deploy-gate', 'FAILED', failedMessage, null);
+        attemptLogged = true;
         throw new Error(body.error || 'Deployment gate reset failed');
       }
 
@@ -7340,12 +7373,17 @@ export default function Home() {
         regression: null,
       });
       setActionState({ busy: false, message: 'Deployment gate reset completed' });
+      appendRecoveryTelemetryEvent('deploy-gate', 'SUCCESS', 'Deployment gate reset completed', null);
+      attemptLogged = true;
       void fetchDashboard();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Deployment gate reset failed';
+      if (!attemptLogged) {
+        appendRecoveryTelemetryEvent('deploy-gate', 'FAILED', message, null);
+      }
       setActionState({ busy: false, message: `Deployment gate reset failed: ${message}` });
     }
-  }, [activeSymbol, deploymentGate.blocked, fetchDashboard]);
+  }, [activeSymbol, appendRecoveryTelemetryEvent, deploymentGate.blocked, fetchDashboard]);
 
   const fallbackDegradedCount = sourceHealth.filter((item) => item.degraded).length;
   const fallbackDelayCandidates = sourceHealth
@@ -7618,6 +7656,8 @@ export default function Home() {
           backtestSummary={backtestSummary}
           signalAudit={signalAudit}
           recoveryTelemetry={recoveryTelemetry}
+          recoveryTelemetrySource={recoveryTelemetrySource}
+          onRecoveryTelemetrySourceChange={setRecoveryTelemetrySource}
         />
       ) : (
         <div
