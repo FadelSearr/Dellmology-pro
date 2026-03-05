@@ -25,18 +25,81 @@ interface Section0Props {
  * - API rate limit tracker
  */
 export const Section0_CommandBar: React.FC<Section0Props> = ({
+    // Global commodities marquee
+    const [commodities, setCommodities] = useState({
+      gold: null,
+      coal: null,
+      nickel: null,
+      ihsg: null,
+    });
+
+    useEffect(() => {
+      const fetchCommodities = async () => {
+        try {
+          const resp = await fetch('http://localhost:8080/market/commodities');
+          const json = await resp.json();
+          setCommodities({
+            gold: json.gold,
+            coal: json.coal,
+            nickel: json.nickel,
+            ihsg: json.ihsg,
+          });
+        } catch {}
+      };
+      fetchCommodities();
+      const interval = setInterval(fetchCommodities, 15000);
+      return () => clearInterval(interval);
+    }, []);
   onSymbolChange,
   marketRegime = 'BULLISH',
   volatility = 'HIGH',
   systemHealth = { sse: true, db: true, shield: true },
   rateLimitUsage = 65,
 }) => {
+
   const [searchInput, setSearchInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
-
   const [suggestions, setSuggestions] = useState<string[]>([]);
 
+  // Real-time regime and price
+  const [regime, setRegime] = useState<'UPTREND'|'DOWNTREND'|'SIDEWAYS'>('SIDEWAYS');
+  const [volatility, setVolatility] = useState<'HIGH'|'MEDIUM'|'LOW'>('MEDIUM');
+  const [livePrice, setLivePrice] = useState<number|null>(null);
+
+  // Fetch regime status
+  useEffect(() => {
+    if (!searchInput) return;
+    const fetchRegime = async () => {
+      try {
+        const resp = await fetch(`http://localhost:8080/market/regime?symbol=${searchInput}`);
+        const json = await resp.json();
+        setRegime(json.regime || 'SIDEWAYS');
+        setVolatility(json.volatility ? (json.volatility ? 'HIGH' : 'LOW') : 'MEDIUM');
+      } catch {}
+    };
+    fetchRegime();
+    const interval = setInterval(fetchRegime, 10000);
+    return () => clearInterval(interval);
+  }, [searchInput]);
+
+  // Fetch live price
+  useEffect(() => {
+    if (!searchInput) return;
+    const fetchPrice = async () => {
+      try {
+        const resp = await fetch(`http://localhost:8080/market/price?symbol=${searchInput}`);
+        const json = await resp.json();
+        setLivePrice(json.last_price || null);
+      } catch {}
+    };
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 5000);
+    return () => clearInterval(interval);
+  }, [searchInput]);
+
+  // Suggestions logic (unchanged)
+  const topStocks = ['BBCA', 'ASII', 'TLKM', 'GOTO', 'BMRI'];
   const fetchSuggestions = async (q: string) => {
     if (!q) {
       setSuggestions([]);
@@ -52,28 +115,20 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
       console.error('symbol lookup failed', err);
     }
   };
-
-  const topStocks = ['BBCA', 'ASII', 'TLKM', 'GOTO', 'BMRI'];
-  // if API returns nothing (table not scraped yet), fall back to a small sample list
   const filteredSuggestions = suggestions.length > 0 ? suggestions : topStocks.filter((stock) =>
     stock.toUpperCase().includes(searchInput.toUpperCase())
   );
-
   const handleSelectStock = (symbol: string) => {
     setSearchInput(symbol);
     setShowSuggestions(false);
     onSymbolChange?.(symbol);
   };
-
-  // debounce lookup
   useEffect(() => {
     const timeout = setTimeout(() => {
       fetchSuggestions(searchInput);
     }, 300);
     return () => clearTimeout(timeout);
   }, [searchInput]);
-
-  // Close suggestions on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -89,7 +144,7 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
       <div className="max-w-screen-2xl mx-auto px-3">
         {/* Single Pulse Row */}
         <div className="flex items-center justify-between gap-3">
-          {/* Search Bar */}
+          {/* Search Bar + Live Price */}
           <div ref={searchRef} className="flex-1 max-w-sm relative">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
@@ -104,7 +159,11 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
                 onFocus={() => setShowSuggestions(true)}
                 className="w-full pl-8 pr-3 py-1.5 bg-gray-800/50 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 transition-all"
               />
-
+              {livePrice !== null && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-cyan-400 font-bold bg-gray-900/80 px-2 py-0.5 rounded">
+                  Rp {livePrice.toLocaleString('id-ID')}
+                </div>
+              )}
               {/* Suggestions Dropdown */}
               {showSuggestions && filteredSuggestions.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 overflow-hidden">
@@ -123,33 +182,41 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
             </div>
           </div>
 
-          {/* Regime Badge */}
+          {/* Regime Badge (real-time) */}
           <div className="flex items-center gap-2">
             <StatusBadge
-              status={marketRegime === 'BULLISH' ? 'bullish' : marketRegime === 'BEARISH' ? 'bearish' : 'neutral'}
-              label={`${marketRegime} - VOL: ${volatility}`}
+              status={regime === 'UPTREND' ? 'bullish' : regime === 'DOWNTREND' ? 'bearish' : 'neutral'}
+              label={`${regime} - VOL: ${volatility}`}
               icon={<TrendingUp className="w-3 h-3" />}
             />
           </div>
 
-          {/* Inline Global Correlation Marquee */}
+          {/* Inline Global Correlation Marquee (real-time) */}
           <div className="hidden lg:block flex-1 overflow-hidden">
             <div className="inline-flex gap-5 animate-scroll whitespace-nowrap text-xs">
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-400">Gold:</span>
-                <span className="text-green-400 font-mono">+0.5%</span>
+                <span className={commodities.gold >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
+                  {commodities.gold !== null ? `${commodities.gold > 0 ? '+' : ''}${commodities.gold}%` : '--'}
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-400">Coal:</span>
-                <span className="text-red-400 font-mono">-1.2%</span>
+                <span className={commodities.coal >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
+                  {commodities.coal !== null ? `${commodities.coal > 0 ? '+' : ''}${commodities.coal}%` : '--'}
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-400">Nickel:</span>
-                <span className="text-green-400 font-mono">+2.1%</span>
+                <span className={commodities.nickel >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
+                  {commodities.nickel !== null ? `${commodities.nickel > 0 ? '+' : ''}${commodities.nickel}%` : '--'}
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-400">IHSG:</span>
-                <span className="text-green-400 font-mono">7,200</span>
+                <span className="text-green-400 font-mono">
+                  {commodities.ihsg !== null ? commodities.ihsg : '--'}
+                </span>
               </div>
             </div>
           </div>

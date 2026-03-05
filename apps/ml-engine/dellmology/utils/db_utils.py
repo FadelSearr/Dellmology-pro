@@ -310,3 +310,66 @@ def get_db_health() -> Dict[str, bool]:
         logger.error(f"Health check failed: {e}")
     
     return health
+
+
+def validate_golden_record(anchor_symbols: List[str], public_prices: Dict[str, float], threshold: float = 0.02) -> Dict[str, bool]:
+    """
+    Validate anchor stock prices against public prices (Yahoo Finance)
+    Args:
+        anchor_symbols: List of anchor stock symbols (e.g., ["BBCA", "ASII", "TLKM"])
+        public_prices: Dict from Yahoo Finance (e.g., {"BBCA.JK": 10000.0})
+        threshold: Allowed deviation (default 2%)
+    Returns:
+        Dict mapping symbol to validation status (True=valid, False=deviates)
+    """
+    results = {}
+    for symbol in anchor_symbols:
+        # Map IDX symbol to Yahoo Finance symbol
+        y_symbol = symbol + ".JK"
+        db_price = None
+        try:
+            with get_db_connection() as conn:
+                query = text("""
+                    SELECT price FROM trades WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 1
+                """)
+                result = conn.execute(query, {"symbol": symbol})
+                row = result.fetchone()
+                if row:
+                    db_price = float(row.price)
+        except Exception as e:
+            logger.error(f"Error fetching DB price for {symbol}: {e}")
+        public_price = public_prices.get(y_symbol)
+        if db_price and public_price:
+            deviation = abs(db_price - public_price) / public_price
+            results[symbol] = deviation <= threshold
+        else:
+            results[symbol] = False
+    return results
+
+
+def save_signal_snapshot(snapshot: Dict, signal_type: str = "BUY", table: str = "signal_snapshots") -> bool:
+    """
+    Save a snapshot of all relevant data when a signal is generated.
+    Args:
+        snapshot: Dict containing all relevant data (price, z_score, cnn_pattern, broker_net, gemini_narrative, etc.)
+        signal_type: Type of signal (BUY/SELL)
+        table: DB table to store snapshots
+    Returns:
+        True if saved successfully, False otherwise
+    """
+    import json
+    try:
+        with get_db_connection() as conn:
+            query = text(f"""
+                INSERT INTO {table} (timestamp, signal_type, snapshot_json)
+                VALUES (:timestamp, :signal_type, :snapshot_json)
+            """)
+            conn.execute(query, {
+                "timestamp": datetime.utcnow().isoformat(),
+                "signal_type": signal_type,
+                "snapshot_json": json.dumps(snapshot)
+            })
+        return True
+    except Exception as e:
+        logger.error(f"Error saving signal snapshot: {e}")
+        return False

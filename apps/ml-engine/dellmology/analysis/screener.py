@@ -1,3 +1,62 @@
+def calculate_model_confidence(signal_snapshots: List[Dict], actual_outcomes: Dict[str, float], threshold: float = 0.02) -> Dict:
+    """
+    Calculate model confidence based on historical signal accuracy.
+    Args:
+        signal_snapshots: List of saved signal snapshots
+        actual_outcomes: Dict mapping symbol to actual outcome (profit/loss)
+        threshold: Allowed deviation for 'hit'
+    Returns:
+        Dict with confidence score and status
+    """
+    total = len(signal_snapshots)
+    hits = 0
+    for snap in signal_snapshots:
+        symbol = snap.get("symbol")
+        expected = snap.get("recommendation")
+        actual = actual_outcomes.get(symbol)
+        # For simplicity, treat profit > 0 as hit for BUY, < 0 as hit for SELL
+        if expected in ["BUY", "STRONG_BUY"] and actual and actual > threshold:
+            hits += 1
+        elif expected in ["SELL", "STRONG_SELL"] and actual and actual < -threshold:
+            hits += 1
+    confidence = hits / total if total else 0.0
+    status = "HIGH" if confidence > 0.7 else ("MEDIUM" if confidence > 0.4 else "LOW")
+    return {"confidence": confidence, "status": status, "total": total, "hits": hits}
+def run_multi_version_analysis(stocks_data: List[Dict], config_a: ScreenerConfig, config_b: ScreenerConfig) -> Dict:
+    """
+    Run Champion (A) and Challenger (B) analysis and compare results
+    Args:
+        stocks_data: List of stock data dicts
+        config_a: Champion config
+        config_b: Challenger config
+    Returns:
+        Dict with both results and comparison
+    """
+    screener_a = AdvancedScreener()
+    screener_a.config = config_a
+    screener_b = AdvancedScreener()
+    screener_b.config = config_b
+
+    scores_a = screener_a.screen_all_stocks(stocks_data)
+    scores_b = screener_b.screen_all_stocks(stocks_data)
+
+    # Compare recommendations
+    comparison = []
+    for sa, sb in zip(scores_a, scores_b):
+        comparison.append({
+            'symbol': sa.symbol,
+            'champion_score': sa.score,
+            'champion_recommendation': sa.recommendation,
+            'challenger_score': sb.score,
+            'challenger_recommendation': sb.recommendation,
+            'agreement': sa.recommendation == sb.recommendation
+        })
+
+    return {
+        'champion': [asdict(s) for s in scores_a],
+        'challenger': [asdict(s) for s in scores_b],
+        'comparison': comparison
+    }
 """
 Advanced Screener Module
 Stock screening based on multiple criteria

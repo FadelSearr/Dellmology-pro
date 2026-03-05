@@ -945,6 +945,21 @@ func insertTrade(t ProcessedTrade) error {
 }
 
 func startHTTPServer() {
+		// Endpoint: /market/commodities
+		mux.HandleFunc("/market/commodities", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*"); w.Header().Set("Content-Type", "application/json");
+			// Dummy data, replace with real API integration (e.g. yfinance, RSS, etc)
+			resp := map[string]interface{}{
+				"gold": 0.5,    // % change
+				"coal": -1.2,
+				"nickel": 2.1,
+				"ihsg": 7200,
+				"updated_at": time.Now().UTC(),
+			}
+			if err := json.NewEncoder(w).Encode(resp); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
 	mux := http.NewServeMux()
 	mux.Handle("/stream", sseBroker)
 	mux.HandleFunc("/broker/whale-clusters", func(w http.ResponseWriter, r *http.Request) {
@@ -975,6 +990,58 @@ func startHTTPServer() {
 			"count": len(negotiatedTrades),
 			"timestamp": time.Now().UTC(),
 		}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	// Endpoint: /market/regime?symbol=BBCA
+	mux.HandleFunc("/market/regime", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			symbol = "BBCA"
+		}
+		// Dummy: regime detection (replace with real logic)
+		prices := []float64{1000, 1020, 1040, 1030, 1050, 1060, 1070, 1080, 1090, 1100}
+		volumes := []int64{100, 120, 130, 110, 150, 160, 170, 180, 190, 200}
+		regime := analysispkg.DetectMarketRegime(prices, volumes)
+		isVol := analysispkg.IsVolatileMarket(prices, 0.03)
+		resp := map[string]interface{}{
+			"symbol": symbol,
+			"regime": regime,
+			"volatility": isVol,
+			"updated_at": time.Now().UTC(),
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	// Endpoint: /market/price?symbol=BBCA
+	mux.HandleFunc("/market/price", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			symbol = "BBCA"
+		}
+		quotesMutex.RLock()
+		quote, ok := latestQuotes[symbol]
+		quotesMutex.RUnlock()
+		resp := map[string]interface{}{
+			"symbol": symbol,
+			"bid": quote.Bid,
+			"offer": quote.Offer,
+			"last_price": quote.Offer, // fallback to offer
+			"updated_at": time.Now().UTC(),
+		}
+		if !ok {
+			resp["status"] = "no_data"
+		} else {
+			resp["status"] = "ok"
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})

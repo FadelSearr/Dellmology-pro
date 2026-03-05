@@ -24,10 +24,18 @@ export const NegotiatedMarketMonitor: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch('/api/negotiated-market');
+        const response = await fetch('http://localhost:8080/negotiated/latest');
         if (!response.ok) throw new Error('Failed to fetch negotiated trades');
         const data = await response.json();
-        setTrades(data.trades || []);
+        setTrades((data.items || []).map((t: any) => ({
+          symbol: t.symbol,
+          price: t.price,
+          volume: t.volume,
+          tradeType: t.tradeType,
+          timestamp: t.timestamp,
+          buyer: t.buyer || '-',
+          seller: t.seller || '-',
+        })));
       } catch (e: any) {
         setError(e.message);
       } finally {
@@ -35,7 +43,7 @@ export const NegotiatedMarketMonitor: React.FC = () => {
       }
     };
     fetchNegotiatedTrades();
-    const interval = setInterval(fetchNegotiatedTrades, 60000);
+    const interval = setInterval(fetchNegotiatedTrades, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -60,19 +68,17 @@ export const NegotiatedMarketMonitor: React.FC = () => {
                 <th className="px-2 py-1">Emiten</th>
                 <th className="px-2 py-1">Harga</th>
                 <th className="px-2 py-1">Volume</th>
-                <th className="px-2 py-1">Buyer</th>
-                <th className="px-2 py-1">Seller</th>
+                <th className="px-2 py-1">Tipe</th>
               </tr>
             </thead>
             <tbody>
               {trades.map((trade, idx) => (
                 <tr key={idx} className="border-b border-gray-700 hover:bg-gray-800/50">
-                  <td className="px-2 py-1">{trade.time}</td>
+                  <td className="px-2 py-1">{trade.timestamp ? new Date(trade.timestamp).toLocaleTimeString('id-ID') : '-'}</td>
                   <td className="px-2 py-1 font-bold text-cyan-400">{trade.symbol}</td>
-                  <td className="px-2 py-1 text-green-400">{trade.price.toLocaleString('id-ID')}</td>
-                  <td className="px-2 py-1">{trade.volume.toLocaleString('id-ID')}</td>
-                  <td className="px-2 py-1">{trade.buyer}</td>
-                  <td className="px-2 py-1">{trade.seller}</td>
+                  <td className="px-2 py-1 text-green-400">{trade.price?.toLocaleString('id-ID')}</td>
+                  <td className="px-2 py-1">{trade.volume?.toLocaleString('id-ID')}</td>
+                  <td className="px-2 py-1">{trade.tradeType}</td>
                 </tr>
               ))}
             </tbody>

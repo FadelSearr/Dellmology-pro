@@ -39,6 +39,7 @@ def generate_narrative(analysis_data: Dict, symbol: str = None) -> str:
     prompt_lines = [
         "You are a veteran Indonesian stock market analyst with expertise in bandarmology.",
         f"Provide a concise, human-readable narrative for symbol {symbol or 'N/A'} based on the following summary:",
+        "Also perform a sentiment stress test based on recent news headlines and search for historical red flags (fraud, legal, management issues) for this company. If any red flags are found, highlight the risk and recommend lowering the Unified Power Score.",
     ]
 
     if stats:
