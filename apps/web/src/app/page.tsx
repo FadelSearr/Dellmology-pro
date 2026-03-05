@@ -322,6 +322,16 @@ interface RecoveryEscalationAuditState {
   lastAcknowledgedAt: string | null;
 }
 
+interface RecoveryEscalationAuditEvent {
+  id: string;
+  eventType: RecoveryEscalationAuditEventType;
+  level: RecoveryEscalationLevel;
+  signature: string | null;
+  source: string | null;
+  symbol: string | null;
+  createdAt: string;
+}
+
 type RecoveryEscalationAuditEventType = 'DETECTED' | 'SUPPRESSED' | 'ACKNOWLEDGED';
 type RecoveryEscalationLevel = 'WARN' | 'HIGH' | 'CRITICAL';
 
@@ -3696,6 +3706,7 @@ function BottomPanel({
   signalAudit,
   recoveryTelemetry,
   recoveryEscalationAudit,
+  recoveryEscalationRecentEvents,
   recoveryTelemetrySource,
   onRecoveryTelemetrySourceChange,
 }: {
@@ -3762,6 +3773,7 @@ function BottomPanel({
   signalAudit: SignalAuditState;
   recoveryTelemetry: RecoveryAttemptTelemetry;
   recoveryEscalationAudit: RecoveryEscalationAuditState;
+  recoveryEscalationRecentEvents: RecoveryEscalationAuditEvent[];
   recoveryTelemetrySource: RecoveryTelemetrySource;
   onRecoveryTelemetrySourceChange: (source: RecoveryTelemetrySource) => void;
 }) {
@@ -4415,6 +4427,32 @@ function BottomPanel({
             {recoveryEscalationAudit.lastAcknowledgedAt ? (
               <div className="text-slate-600">{`Last Ack ${new Date(recoveryEscalationAudit.lastAcknowledgedAt).toLocaleTimeString('id-ID')}`}</div>
             ) : null}
+            {recoveryEscalationRecentEvents.length > 0 ? (
+              <div className="space-y-1 border-t border-slate-800 pt-1">
+                {recoveryEscalationRecentEvents.slice(0, 3).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-1">
+                    <span
+                      className={cn(
+                        item.eventType === 'DETECTED'
+                          ? 'text-rose-300'
+                          : item.eventType === 'SUPPRESSED'
+                            ? 'text-amber-300'
+                            : 'text-emerald-300',
+                      )}
+                    >
+                      {item.eventType}
+                    </span>
+                    <span className={cn(item.level === 'CRITICAL' ? 'text-rose-300' : item.level === 'HIGH' ? 'text-amber-300' : 'text-slate-500')}>
+                      {item.level}
+                    </span>
+                    <span className="text-slate-500 truncate" title={item.source || 'unknown source'}>
+                      {item.source || '-'}
+                    </span>
+                    <span className="text-slate-500">{new Date(item.createdAt).toLocaleTimeString('id-ID')}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div
               className={cn(
                 recoveryTelemetry.lastStatus === 'SUCCESS'
@@ -4781,6 +4819,7 @@ export default function Home() {
     suppressionRatioPct: 0,
     lastAcknowledgedAt: null,
   });
+  const [recoveryEscalationRecentEvents, setRecoveryEscalationRecentEvents] = useState<RecoveryEscalationAuditEvent[]>([]);
   const recoveryEscalationLastCountedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -4788,7 +4827,7 @@ export default function Home() {
 
     const hydrateRecoveryEscalationAudit = async () => {
       try {
-        const response = await fetch('/api/system-control/recovery-escalation-audit?limit=1');
+        const response = await fetch('/api/system-control/recovery-escalation-audit?limit=3');
         if (!response.ok) {
           return;
         }
@@ -4802,6 +4841,15 @@ export default function Home() {
             suppression_ratio_pct?: number;
             last_acknowledged_at?: string | null;
           };
+          logs?: Array<{
+            id?: number | string;
+            event_type?: RecoveryEscalationAuditEventType;
+            level?: RecoveryEscalationLevel;
+            signature?: string | null;
+            source?: string | null;
+            symbol?: string | null;
+            created_at?: string;
+          }>;
         };
 
         if (!body.success || cancelled) {
@@ -4816,6 +4864,19 @@ export default function Home() {
           suppressionRatioPct: Number(summary?.suppression_ratio_pct || 0),
           lastAcknowledgedAt: summary?.last_acknowledged_at || null,
         });
+        setRecoveryEscalationRecentEvents(
+          (body.logs || [])
+            .filter((item) => item.event_type && item.level && item.created_at)
+            .map((item) => ({
+              id: String(item.id || item.created_at),
+              eventType: item.event_type as RecoveryEscalationAuditEventType,
+              level: item.level as RecoveryEscalationLevel,
+              signature: item.signature || null,
+              source: item.source || null,
+              symbol: item.symbol || null,
+              createdAt: item.created_at as string,
+            })),
+        );
       } catch {
         return;
       }
@@ -7785,6 +7846,7 @@ export default function Home() {
       return;
     }
 
+    const escalationLevelForAudit = recoveryEscalationLevel as RecoveryEscalationLevel;
     recoveryEscalationLastCountedRef.current = recoveryEscalationSignature;
     setRecoveryEscalationAudit((prev) => {
       const nextDetected = prev.detectedCount + 1;
@@ -7798,7 +7860,7 @@ export default function Home() {
     });
     persistRecoveryEscalationAuditEvent(
       recoveryEscalationSilenced ? 'SUPPRESSED' : 'DETECTED',
-      recoveryEscalationLevel,
+      escalationLevelForAudit,
       recoveryEscalationSignature,
       recoveryPulse.lastSource,
     );
@@ -7848,6 +7910,11 @@ export default function Home() {
     }
   }, [recoveryEscalationAck.ackedAt, recoveryEscalationAck.signature, recoveryEscalationAck.silencedUntil, runtimeRecoveryEscalationAckMinutes]);
   const acknowledgeRecoveryEscalation = useCallback(() => {
+    if (recoveryEscalationLevel === 'OK') {
+      return;
+    }
+
+    const escalationLevelForAudit: RecoveryEscalationLevel = recoveryEscalationLevel;
     const ackMinutes = Math.max(1, Math.floor(runtimeRecoveryEscalationAckMinutes));
     const ackedAt = new Date().toISOString();
     setRecoveryEscalationAck({
@@ -7860,7 +7927,7 @@ export default function Home() {
       acknowledgedCount: prev.acknowledgedCount + 1,
       lastAcknowledgedAt: ackedAt,
     }));
-    persistRecoveryEscalationAuditEvent('ACKNOWLEDGED', recoveryEscalationLevel, recoveryEscalationSignature, recoveryPulse.lastSource);
+    persistRecoveryEscalationAuditEvent('ACKNOWLEDGED', escalationLevelForAudit, recoveryEscalationSignature, recoveryPulse.lastSource);
   }, [persistRecoveryEscalationAuditEvent, recoveryEscalationLevel, recoveryEscalationSignature, recoveryPulse.lastSource, runtimeRecoveryEscalationAckMinutes]);
   const combatCriticalLocks = buildActiveLockGuards({
     coolingOffActive: coolingOff.active,
@@ -8176,6 +8243,7 @@ export default function Home() {
           signalAudit={signalAudit}
           recoveryTelemetry={recoveryTelemetry}
           recoveryEscalationAudit={recoveryEscalationAudit}
+          recoveryEscalationRecentEvents={recoveryEscalationRecentEvents}
           recoveryTelemetrySource={recoveryTelemetrySource}
           onRecoveryTelemetrySourceChange={setRecoveryTelemetrySource}
         />
