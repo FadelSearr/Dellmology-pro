@@ -1462,6 +1462,8 @@ function TopNavigation({
   minUpsForLong,
   marketRegimeLabel,
   marketRegimeReason,
+  correlationEngineLabel,
+  correlationEngineReason,
   infraStatus,
   globalData,
 }: {
@@ -1525,6 +1527,8 @@ function TopNavigation({
   minUpsForLong: number;
   marketRegimeLabel: MarketRegimeLabel;
   marketRegimeReason: string;
+  correlationEngineLabel: 'BULL_ALIGN' | 'BEAR_ALIGN' | 'DIVERGENCE' | 'NEUTRAL';
+  correlationEngineReason: string;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1555,6 +1559,14 @@ function TopNavigation({
     globalSentimentLabel === 'BULLISH'
       ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
       : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
+  const correlationEngineTone =
+    correlationEngineLabel === 'BULL_ALIGN'
+      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+      : correlationEngineLabel === 'BEAR_ALIGN'
+        ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+        : correlationEngineLabel === 'DIVERGENCE'
+          ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+          : 'text-slate-400 border-slate-800 bg-slate-900/30';
   const tokenAlert = tokenTelemetry.status !== 'fresh' || tokenTelemetry.deadmanTriggered;
   const recoveryPulseLabel =
     recoveryPulse.lastStatus === 'LOCKED'
@@ -1921,6 +1933,9 @@ function TopNavigation({
         </div>
         <div className={cn('text-[10px] font-mono border rounded px-2 py-1', macroAnomalyTone)} title={macroAnomalyReason}>
           {`ANOM ${macroAnomalyLabel}${macroAnomalyLabel !== 'NORMAL' ? ` ${macroDivergencePct.toFixed(1)}%` : ''}`}
+        </div>
+        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', correlationEngineTone)} title={correlationEngineReason}>
+          {`CORR ${correlationEngineLabel}`}
         </div>
         <div
           className={cn(
@@ -6975,6 +6990,24 @@ export default function Home() {
     rocActive: rocKillSwitch.active,
   });
   const minUpsForLong = applyRegimeUpsThreshold(baseMinUpsForLong, marketRegime.label);
+  const whaleNetFlow = brokers.filter((row) => row.type === 'Whale').reduce((sum, row) => sum + row.net, 0);
+  const globalSentiment = globalData?.global_sentiment || 'BEARISH';
+  const correlationEngineLabel: 'BULL_ALIGN' | 'BEAR_ALIGN' | 'DIVERGENCE' | 'NEUTRAL' =
+    whaleNetFlow > 0 && globalSentiment === 'BULLISH' && marketRegime.label === 'UPTREND'
+      ? 'BULL_ALIGN'
+      : whaleNetFlow < 0 && globalSentiment === 'BEARISH' && marketRegime.label === 'DOWNTREND'
+        ? 'BEAR_ALIGN'
+        : Math.abs(whaleNetFlow) > 0
+          ? 'DIVERGENCE'
+          : 'NEUTRAL';
+  const correlationEngineReason =
+    correlationEngineLabel === 'BULL_ALIGN'
+      ? `Whale net flow ${formatCompactIDR(whaleNetFlow)} aligned with ${globalSentiment} and regime ${marketRegime.label}`
+      : correlationEngineLabel === 'BEAR_ALIGN'
+        ? `Whale net flow ${formatCompactIDR(whaleNetFlow)} aligned with ${globalSentiment} and regime ${marketRegime.label}`
+        : correlationEngineLabel === 'DIVERGENCE'
+          ? `Whale net flow ${formatCompactIDR(whaleNetFlow)} diverges from global sentiment ${globalSentiment} / regime ${marketRegime.label}`
+          : `No dominant whale directional flow; regime ${marketRegime.label}`;
   const hardGateSystemicRisk = SYSTEMIC_RISK_HARD_GATE;
   const configDrift =
     runtimeIhsgDrop !== ROADMAP_DEFAULTS.killSwitchIhsgDropPct ||
@@ -8509,6 +8542,8 @@ export default function Home() {
         minUpsForLong={minUpsForLong}
         marketRegimeLabel={marketRegime.label}
         marketRegimeReason={marketRegime.reason}
+        correlationEngineLabel={correlationEngineLabel}
+        correlationEngineReason={correlationEngineReason}
         infraStatus={infraStatus}
         globalData={globalData}
       />
