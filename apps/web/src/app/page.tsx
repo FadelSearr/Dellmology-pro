@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Search,
   Zap,
@@ -439,6 +439,7 @@ interface AdversarialNarrative {
 }
 
 type VoteSignal = 'BUY' | 'SELL' | 'NEUTRAL';
+type MarketRegimeLabel = 'UPTREND' | 'SIDEWAYS' | 'DOWNTREND';
 
 interface ModelConsensus {
   technical: VoteSignal;
@@ -1240,6 +1241,39 @@ function sentimentVoteFromNarrative(
   return 'NEUTRAL';
 }
 
+function deriveMarketRegime(params: {
+  consensus: ModelConsensus;
+  mtfWarning: boolean;
+  shortUps: number;
+  highUps: number;
+  combatActive: boolean;
+  rocActive: boolean;
+}): { label: MarketRegimeLabel; reason: string } {
+  const shortBull = params.shortUps >= 60;
+  const highBull = params.highUps >= 60;
+  const highBear = params.highUps <= 45;
+
+  if (params.rocActive || (params.combatActive && !shortBull)) {
+    return { label: 'DOWNTREND', reason: 'Volatility spike / defensive mode active' };
+  }
+
+  if (params.consensus.pass && params.consensus.status === 'CONSENSUS_BULL' && !params.mtfWarning && shortBull && highBull) {
+    return { label: 'UPTREND', reason: 'Consensus bull + multi-timeframe aligned' };
+  }
+
+  if (params.consensus.status === 'CONSENSUS_BEAR' || highBear || params.mtfWarning) {
+    return { label: 'DOWNTREND', reason: 'Bearish bias or multi-timeframe conflict' };
+  }
+
+  return { label: 'SIDEWAYS', reason: 'Mixed signals, waiting directional confirmation' };
+}
+
+function applyRegimeUpsThreshold(baseMinUps: number, regime: MarketRegimeLabel) {
+  if (regime === 'DOWNTREND') return Math.min(99, baseMinUps + 10);
+  if (regime === 'SIDEWAYS') return Math.min(99, baseMinUps + 5);
+  return baseMinUps;
+}
+
 function buildCombatBullets(consensus: ModelConsensus, coolingActive: boolean): [string, string, string] {
   const defaultBullets: [string, string, string] = coolingActive
     ? ['COOLING OFF ACTIVE', 'RISK FIRST ALWAYS', 'WAIT NEXT CANDLE']
@@ -1424,6 +1458,8 @@ function TopNavigation({
   ihsgChangePct,
   runtimeIhsgDrop,
   minUpsForLong,
+  marketRegimeLabel,
+  marketRegimeReason,
   infraStatus,
   globalData,
 }: {
@@ -1485,6 +1521,8 @@ function TopNavigation({
   ihsgChangePct: number;
   runtimeIhsgDrop: number;
   minUpsForLong: number;
+  marketRegimeLabel: MarketRegimeLabel;
+  marketRegimeReason: string;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1698,7 +1736,7 @@ function TopNavigation({
   const infraCoreStatuses: Tone[] = [infraStatus.sse, infraStatus.db, infraStatus.integrity];
   const infraCoreHealthyCount = infraCoreStatuses.filter((status) => status === 'good').length;
   const infraCoreIssueCount = infraCoreStatuses.length - infraCoreHealthyCount;
-  const regimeLabel = !modelConsensus.pass ? 'SIDEWAYS' : modelConsensus.status === 'CONSENSUS_BULL' ? 'UPTREND' : 'DOWNTREND';
+  const regimeLabel = marketRegimeLabel;
   const searchInputNormalized = symbolInput.trim().toUpperCase();
   const searchInputEmpty = searchInputNormalized.length === 0;
   const searchInputMatchesActive = !searchInputEmpty && searchInputNormalized === activeSymbol.toUpperCase();
@@ -1724,11 +1762,12 @@ function TopNavigation({
     : searchInputEmpty
       ? 'Type symbol then press Enter or APPLY'
       : `Pending apply: ${searchInputNormalized}`;
-  const regimeTone = !modelConsensus.pass
-    ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
-    : modelConsensus.status === 'CONSENSUS_BULL'
+  const regimeTone =
+    regimeLabel === 'UPTREND'
       ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
-      : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
+      : regimeLabel === 'SIDEWAYS'
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
   const marqueeEntries = [
     ...tapeItems.map((item) => (
       <span key={item.label} className="flex items-center space-x-1">
@@ -1814,7 +1853,7 @@ function TopNavigation({
           <div className="px-2 py-1 rounded border border-slate-800 bg-slate-900/40 text-slate-300">
             {`${activeSymbol} ${currentPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })} (${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}%)`}
           </div>
-          <div className={cn('px-2 py-1 rounded border', regimeTone)} title={modelConsensus.message}>
+          <div className={cn('px-2 py-1 rounded border', regimeTone)} title={marketRegimeReason}>
             {`REGIME ${regimeLabel}`}
           </div>
         </div>
@@ -6247,11 +6286,11 @@ export default function Home() {
       runtimeConfig?.config?.systemic_risk_beta_threshold ?? SYSTEMIC_RISK_BETA_THRESHOLD,
     );
     const killSwitchActive = ihsgChangePct <= runtimeIhsgDrop;
-    const minUpsForLong = killSwitchActive ? runtimeRiskUps : runtimeNormalUps;
+    const baseMinUpsForLong = killSwitchActive ? runtimeRiskUps : runtimeNormalUps;
     const mtfShortUps = Number(mtfShortIntel?.unified_power_score?.score || nextUps);
     const mtfHighUps = Number(mtfHighIntel?.unified_power_score?.score || nextUps);
-    const mtfShortVote = technicalVoteFromUps(mtfShortUps, minUpsForLong);
-    const mtfHighVote = technicalVoteFromUps(mtfHighUps, minUpsForLong);
+    const mtfShortVote = technicalVoteFromUps(mtfShortUps, baseMinUpsForLong);
+    const mtfHighVote = technicalVoteFromUps(mtfHighUps, baseMinUpsForLong);
     const mtfWarning = mtfShortVote === 'BUY' && mtfHighVote !== 'BUY';
     setMtfValidation({
       warning: mtfWarning,
@@ -6446,10 +6485,6 @@ export default function Home() {
     }, 0);
     const portfolioBetaEstimateLocal = portfolioWeightedDeltaPctLocal / betaDenominator;
     const portfolioSystemicRiskHighLocal = portfolioBetaEstimateLocal > runtimeSystemicRiskBetaThreshold;
-    const riskGateLabel = killSwitchActive
-      ? `KILL-SWITCH ACTIVE (IHSG ${ihsgChangePct.toFixed(2)}%, min UPS ${minUpsForLong})`
-      : `NORMAL (${minUpsForLong} UPS gate)`;
-
     const artificialLiquidityWarning = Boolean(brokerFlow?.stats?.artificial_liquidity_warning);
     const brokerCharacterWarning = Boolean(brokerFlow?.stats?.bcp_risk_warning);
     const whaleNetPositive = brokerRows.filter((row) => row.type === 'Whale').reduce((sum, row) => sum + row.net, 0) > 0;
@@ -6487,7 +6522,7 @@ export default function Home() {
       hakiRatio,
     });
 
-    const technicalVote = rocCritical ? 'NEUTRAL' : technicalVoteFromUps(nextUps, minUpsForLong);
+    const technicalVote = rocCritical ? 'NEUTRAL' : technicalVoteFromUps(nextUps, baseMinUpsForLong);
     const bandarmologyVote = bandarmologyVoteFromFlow(
       brokerRows,
       artificialLiquidityWarning,
@@ -6520,8 +6555,20 @@ export default function Home() {
         exitWhaleWarning,
       },
     );
-    setModelConsensus(preliminaryConsensus);
     const combatActive = volClass.toUpperCase() === 'HIGH' || volPct >= COMBAT_MODE_VOLATILITY_PCT;
+    const derivedRegime = deriveMarketRegime({
+      consensus: preliminaryConsensus,
+      mtfWarning,
+      shortUps: mtfShortUps,
+      highUps: mtfHighUps,
+      combatActive,
+      rocActive: rocCritical,
+    });
+    const minUpsForLong = applyRegimeUpsThreshold(baseMinUpsForLong, derivedRegime.label);
+    const riskGateLabel = killSwitchActive
+      ? `KILL-SWITCH ACTIVE (IHSG ${ihsgChangePct.toFixed(2)}%, regime ${derivedRegime.label}, min UPS ${minUpsForLong})`
+      : `NORMAL (${derivedRegime.label}, ${minUpsForLong} UPS gate)`;
+    setModelConsensus(preliminaryConsensus);
     const narrativeDraft =
       `System: Analyzing ${activeSymbol} market structure...\n\n` +
       `AI: ${signalLabel(nextUps, minUpsForLong).toUpperCase()} BIAS DETECTED.\n` +
@@ -6728,7 +6775,16 @@ export default function Home() {
   const staleAudit = lastRiskAuditAgeMs !== null && lastRiskAuditAgeMs > staleAuditThresholdMs;
   const ihsgChangePct = Number(globalData?.change_ihsg || 0);
   const killSwitchActive = ihsgChangePct <= runtimeIhsgDrop;
-  const minUpsForLong = killSwitchActive ? runtimeRiskUps : runtimeNormalUps;
+  const baseMinUpsForLong = killSwitchActive ? runtimeRiskUps : runtimeNormalUps;
+  const marketRegime = deriveMarketRegime({
+    consensus: modelConsensus,
+    mtfWarning: mtfValidation.warning,
+    shortUps: mtfValidation.shortUps || upsScore,
+    highUps: mtfValidation.highUps || upsScore,
+    combatActive: combatMode.active,
+    rocActive: rocKillSwitch.active,
+  });
+  const minUpsForLong = applyRegimeUpsThreshold(baseMinUpsForLong, marketRegime.label);
   const hardGateSystemicRisk = SYSTEMIC_RISK_HARD_GATE;
   const configDrift =
     runtimeIhsgDrop !== ROADMAP_DEFAULTS.killSwitchIhsgDropPct ||
@@ -8261,6 +8317,8 @@ export default function Home() {
         ihsgChangePct={ihsgChangePct}
         runtimeIhsgDrop={runtimeIhsgDrop}
         minUpsForLong={minUpsForLong}
+        marketRegimeLabel={marketRegime.label}
+        marketRegimeReason={marketRegime.reason}
         infraStatus={infraStatus}
         globalData={globalData}
       />
