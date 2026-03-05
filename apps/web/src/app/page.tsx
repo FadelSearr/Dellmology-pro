@@ -322,7 +322,8 @@ interface RecoveryEscalationAuditState {
   lastAcknowledgedAt: string | null;
 }
 
-type RecoveryEscalationAuditEventType = 'DETECTED' | 'ACKNOWLEDGED';
+type RecoveryEscalationAuditEventType = 'DETECTED' | 'SUPPRESSED' | 'ACKNOWLEDGED';
+type RecoveryEscalationLevel = 'WARN' | 'HIGH' | 'CRITICAL';
 
 interface TokenTelemetry {
   status: 'fresh' | 'expiring' | 'expired' | 'missing';
@@ -4782,27 +4783,12 @@ export default function Home() {
   });
   const recoveryEscalationLastCountedRef = useRef<string | null>(null);
 
-  const appendRecoveryEscalationAuditEvent = useCallback(
-    (eventType: RecoveryEscalationAuditEventType, signature: string, suppressed: boolean) => {
-      void fetch('/api/system-control/recovery-escalation-audit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event_type: eventType,
-          signature,
-          suppressed,
-        }),
-      }).catch(() => undefined);
-    },
-    [],
-  );
-
   useEffect(() => {
     let cancelled = false;
 
     const hydrateRecoveryEscalationAudit = async () => {
       try {
-        const response = await fetch('/api/system-control/recovery-escalation-audit');
+        const response = await fetch('/api/system-control/recovery-escalation-audit?limit=1');
         if (!response.ok) {
           return;
         }
@@ -4836,11 +4822,32 @@ export default function Home() {
     };
 
     void hydrateRecoveryEscalationAudit();
+    const timer = window.setInterval(() => {
+      void hydrateRecoveryEscalationAudit();
+    }, 30_000);
 
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, []);
+
+  const persistRecoveryEscalationAuditEvent = useCallback(
+    (eventType: RecoveryEscalationAuditEventType, level: RecoveryEscalationLevel, signature: string, source: RecoveryTelemetrySource | null) => {
+      void fetch('/api/system-control/recovery-escalation-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_type: eventType,
+          level,
+          signature,
+          source,
+          symbol: activeSymbol,
+        }),
+      }).catch(() => undefined);
+    },
+    [activeSymbol],
+  );
 
   useEffect(() => {
     try {
@@ -7779,7 +7786,6 @@ export default function Home() {
     }
 
     recoveryEscalationLastCountedRef.current = recoveryEscalationSignature;
-    appendRecoveryEscalationAuditEvent('DETECTED', recoveryEscalationSignature, recoveryEscalationSilenced);
     setRecoveryEscalationAudit((prev) => {
       const nextDetected = prev.detectedCount + 1;
       const nextSuppressed = prev.suppressedCount + (recoveryEscalationSilenced ? 1 : 0);
@@ -7790,7 +7796,20 @@ export default function Home() {
         suppressionRatioPct: nextDetected > 0 ? (nextSuppressed / nextDetected) * 100 : 0,
       };
     });
-  }, [appendRecoveryEscalationAuditEvent, recoveryEscalationDetected, recoveryEscalationSilenced, recoveryEscalationSignature]);
+    persistRecoveryEscalationAuditEvent(
+      recoveryEscalationSilenced ? 'SUPPRESSED' : 'DETECTED',
+      recoveryEscalationLevel,
+      recoveryEscalationSignature,
+      recoveryPulse.lastSource,
+    );
+  }, [
+    persistRecoveryEscalationAuditEvent,
+    recoveryEscalationDetected,
+    recoveryEscalationLevel,
+    recoveryEscalationSilenced,
+    recoveryEscalationSignature,
+    recoveryPulse.lastSource,
+  ]);
   const recoveryEscalationTone =
     recoveryEscalationLevel === 'CRITICAL'
       ? 'border-rose-500/50 bg-rose-500/20 text-rose-100'
@@ -7841,8 +7860,8 @@ export default function Home() {
       acknowledgedCount: prev.acknowledgedCount + 1,
       lastAcknowledgedAt: ackedAt,
     }));
-    appendRecoveryEscalationAuditEvent('ACKNOWLEDGED', recoveryEscalationSignature, false);
-  }, [appendRecoveryEscalationAuditEvent, recoveryEscalationSignature, runtimeRecoveryEscalationAckMinutes]);
+    persistRecoveryEscalationAuditEvent('ACKNOWLEDGED', recoveryEscalationLevel, recoveryEscalationSignature, recoveryPulse.lastSource);
+  }, [persistRecoveryEscalationAuditEvent, recoveryEscalationLevel, recoveryEscalationSignature, recoveryPulse.lastSource, runtimeRecoveryEscalationAckMinutes]);
   const combatCriticalLocks = buildActiveLockGuards({
     coolingOffActive: coolingOff.active,
     coolingRemainingLabel,
