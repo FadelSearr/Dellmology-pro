@@ -25,6 +25,7 @@ GLOBAL_MODEL = None
 def _load_saved_model_if_present():
     global GLOBAL_MODEL
     model_path = os.path.join(os.path.dirname(__file__), 'toy_cnn.h5')
+    stub_path = os.path.join(os.path.dirname(__file__), 'toy_cnn_stub.json')
     try:
         # import tensorflow lazily
         import tensorflow as tf
@@ -67,6 +68,38 @@ def _load_saved_model_if_present():
             return
     except Exception as e:
         print('Saved model load skipped (tensorflow unavailable or load error):', e)
+
+    # If a lightweight JSON stub exists, load it (allows end-to-end testing without TF)
+    try:
+        if os.path.exists(stub_path):
+            print('Found stub model at', stub_path, '— loading stub model')
+            with open(stub_path, 'r') as f:
+                cfg = json.load(f)
+
+            class StubWrapper:
+                def __init__(self, cfg):
+                    # expected format: {"input_shape": [H,W,C], "predictions": [[...], [...]]}
+                    self.input_shape = tuple(cfg.get('input_shape', [16, 16, 1]))
+                    self._preds = cfg.get('predictions', None)
+
+                def predict(self, batch_inputs):
+                    # if fixed predictions provided, return them (repeat/truncate as needed)
+                    if self._preds is not None:
+                        out = list(self._preds)
+                        # ensure length matches batch size
+                        if len(out) < len(batch_inputs):
+                            # repeat last
+                            last = out[-1] if out else [0.5, 0.5]
+                            while len(out) < len(batch_inputs):
+                                out.append(last)
+                        return out[:len(batch_inputs)]
+                    # default: uniform 2-class predictions
+                    return [[0.5, 0.5] for _ in batch_inputs]
+
+            GLOBAL_MODEL = StubWrapper(cfg)
+            return
+    except Exception as e:
+        print('Failed to load stub model:', e)
 
     # fallback to scaffold
     try:
