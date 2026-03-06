@@ -11,7 +11,7 @@ const createPrompt = (symbol: string, date: string, summary: any[]): string => {
   const topAccumulation = summary.filter(s => s.net_buy_value > 0).slice(0, 5);
   const topDistribution = summary.filter(s => s.net_buy_value < 0).sort((a,b) => a.net_buy_value - b.net_buy_value).slice(0, 5);
 
-  let prompt = `As a senior stock market analyst specializing in "bandarmology," analyze the following end-of-day broker summary data for stock symbol ${symbol} on ${date}. Provide a concise, insightful narrative in human language. Focus on identifying the behavior of "Whales" or "Smart Money."
+  const prompt = `As a senior stock market analyst specializing in "bandarmology," analyze the following end-of-day broker summary data for stock symbol ${symbol} on ${date}. Provide a concise, insightful narrative in human language. Focus on identifying the behavior of "Whales" or "Smart Money."
 
 Data Overview:
 - Total Brokers Analyzed: ${summary.length}
