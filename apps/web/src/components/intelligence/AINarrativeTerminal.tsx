@@ -28,13 +28,21 @@ export const AINarrativeTerminal: React.FC = () => {
 
   const handleSnapshot = async () => {
     try {
-      await fetch('/api/snapshots', {
+      const res = await fetch('/api/snapshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol, snapshotAt: new Date().toISOString(), data: lastEvent || null }),
       });
-      // noop: snapshot endpoint should persist on server
-    } catch {}
+      if (res.ok) {
+        alert('Snapshot saved')
+      } else {
+        const j = await res.json().catch(() => ({}))
+        alert('Snapshot failed: ' + (j.error || res.status))
+      }
+    } catch (err) {
+      console.warn('snapshot failed', err)
+      alert('Snapshot failed')
+    }
   };
 
   return (
