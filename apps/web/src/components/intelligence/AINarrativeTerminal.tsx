@@ -52,7 +52,7 @@ export const AINarrativeTerminal: React.FC = () => {
             </div>
             <div>
               <label className="text-xs text-gray-400 mr-2">Type</label>
-              <select value={type} onChange={(e) => setType(e.target.value as any)} className="bg-gray-800 border border-gray-700 text-white text-sm px-2 py-1 rounded">
+              <select value={type} onChange={(e) => setType(e.target.value as 'broker' | 'regime' | 'swot' | 'screener')} className="bg-gray-800 border border-gray-700 text-white text-sm px-2 py-1 rounded">
                 <option value="broker">Broker</option>
                 <option value="swot">SWOT</option>
                 <option value="regime">Regime</option>

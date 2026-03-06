@@ -53,8 +53,8 @@ export function Screener() {
         } else {
           throw new Error(data.error || `${mode.charAt(0).toUpperCase() + mode.slice(1)} screener failed`);
         }
-      } catch (e: any) {
-        setError(e.message);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoading(false);
       }

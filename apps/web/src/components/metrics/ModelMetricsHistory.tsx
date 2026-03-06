@@ -22,12 +22,13 @@ export default function ModelMetricsHistory({ symbol = 'BBCA', limit = 30 }: { s
         const json = await resp.json()
         if (!mounted) return
         if (json.success) {
-          setRows((json.metrics || [] as any).map((r: any) => ({
-            id: r.id,
-            symbol: r.symbol,
-            trained_at: r.trained_at,
-            training_loss: r.training_loss,
-            validation_accuracy: r.validation_accuracy,
+          const metrics = Array.isArray(json.metrics) ? json.metrics : []
+          setRows(metrics.map((raw) => ({
+            id: Number((raw as any).id || 0),
+            symbol: String((raw as any).symbol || ''),
+            trained_at: String((raw as any).trained_at || ''),
+            training_loss: (raw as any).training_loss ?? null,
+            validation_accuracy: (raw as any).validation_accuracy ?? null,
           })))
         }
       } catch (e) {
