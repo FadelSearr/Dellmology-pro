@@ -403,7 +403,7 @@ function generateSWOTNarrative(data: Record<string, unknown>, symbol?: string): 
  * GET /api/narrative/template
  * Returns available narrative templates
  */
-export async function GET(request: Request) {
+export async function GET() {
   const templates = [
     {
       type: 'broker',

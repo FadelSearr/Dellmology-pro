@@ -4,7 +4,9 @@ import { useEffect, useRef } from 'react';
 
 declare global {
   interface Window {
-    TradingView?: any;
+    TradingView?: {
+      widget?: new (opts: Record<string, unknown>) => unknown;
+    };
   }
 }
 
@@ -26,10 +28,8 @@ const TradingViewWidget = ({ symbol, width = '100%', height = 400, interval = '6
     script.async = true;
     script.onload = () => {
       try {
-        // @ts-expect-error third-party widget
-        const TV = window.TradingView
-        if (TV && containerRef.current) {
-          // @ts-expect-error third-party widget
+        const TV = window.TradingView as unknown as { widget?: new (opts: Record<string, unknown>) => unknown } | undefined;
+        if (TV && TV.widget && containerRef.current) {
           new TV.widget({
             width,
             height,
@@ -46,7 +46,7 @@ const TradingViewWidget = ({ symbol, width = '100%', height = 400, interval = '6
             container_id: containerRef.current.id,
           });
         }
-      } catch (e) {
+      } catch {
         // fail silently — widget is optional
       }
     };
@@ -56,7 +56,7 @@ const TradingViewWidget = ({ symbol, width = '100%', height = 400, interval = '6
     return () => {
       try {
         if (script.parentNode) script.parentNode.removeChild(script);
-      } catch (e) {
+      } catch {
         // ignore
       }
     };

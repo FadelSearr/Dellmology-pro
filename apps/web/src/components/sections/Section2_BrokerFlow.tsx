@@ -27,7 +27,7 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
 }) => {
   const [filterType, setFilterType] = useState<'ALL' | 'SMART_MONEY' | 'WHALE' | 'RETAIL'>('ALL');
   const [timelineType, setTimelineType] = useState<'1D' | '7D' | '14D' | '21D'>('7D');
-  const [brokerData, setBrokerData] = useState<any[]>([]);
+  const [brokerData, setBrokerData] = useState<Record<string, unknown>[]>([]);
   const [brokerStats, setBrokerStats] = useState<{
     wash_sale_score?: number;
     avg_net_value?: number;

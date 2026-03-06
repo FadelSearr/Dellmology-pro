@@ -23,13 +23,18 @@ export default function ModelMetricsHistory({ symbol = 'BBCA', limit = 30 }: { s
         if (!mounted) return
         if (json.success) {
           const metrics = Array.isArray(json.metrics) ? json.metrics : []
-          setRows(metrics.map((raw) => ({
-            id: Number((raw as any).id || 0),
-            symbol: String((raw as any).symbol || ''),
-            trained_at: String((raw as any).trained_at || ''),
-            training_loss: (raw as any).training_loss ?? null,
-            validation_accuracy: (raw as any).validation_accuracy ?? null,
-          })))
+          setRows(
+            metrics.map((raw) => {
+              const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+              return {
+                id: Number(r.id ?? 0),
+                symbol: String(r.symbol ?? ''),
+                trained_at: String(r.trained_at ?? ''),
+                training_loss: typeof r.training_loss === 'number' ? r.training_loss : null,
+                validation_accuracy: typeof r.validation_accuracy === 'number' ? r.validation_accuracy : null,
+              }
+            }) as MetricRow[]
+          )
         }
       } catch (e) {
         console.error('Failed to load metrics', e)

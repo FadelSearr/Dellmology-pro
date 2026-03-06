@@ -84,6 +84,20 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
       return data;
     };
 
+    // Add 20-day SMA (Simple Moving Average)
+    const smaLine20 = chart.addLineSeries({
+      color: '#f59e0b',
+      lineWidth: 2,
+      title: 'SMA 20',
+    });
+
+    // Add 50-day SMA
+    const smaLine50 = chart.addLineSeries({
+      color: '#8b5cf6',
+      lineWidth: 2,
+      title: 'SMA 50',
+    });
+
     const applyChartData = (chartData: CandleData[]) => {
       setData(chartData);
       candlestickSeries.setData(chartData);
@@ -95,7 +109,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
       }));
       volumeSeries.setData(volumeData);
 
-      const smaData = [];
+      const smaData: { time: number; value: number }[] = [];
       for (let i = 19; i < chartData.length; i++) {
         const sum = chartData.slice(i - 19, i + 1).reduce((acc, d) => acc + d.close, 0);
         smaData.push({
@@ -105,7 +119,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
       }
       smaLine20.setData(smaData);
 
-      const smaData50 = [];
+      const smaData50: { time: number; value: number }[] = [];
       for (let i = 49; i < chartData.length; i++) {
         const sum = chartData.slice(i - 49, i + 1).reduce((acc, d) => acc + d.close, 0);
         smaData50.push({
@@ -118,19 +132,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
       chart.timeScale().fitContent();
     };
 
-    // Add 20-day SMA (Simple Moving Average)
-    const smaLine20 = (chart as any).addLineSeries({
-      color: '#f59e0b',
-      lineWidth: 2,
-      title: 'SMA 20',
-    });
-
-    // Add 50-day SMA
-    const smaLine50 = (chart as any).addLineSeries({
-      color: '#8b5cf6',
-      lineWidth: 2,
-      title: 'SMA 50',
-    });
+    // SMA series already initialized above
 
     const loadChartData = async () => {
       try {

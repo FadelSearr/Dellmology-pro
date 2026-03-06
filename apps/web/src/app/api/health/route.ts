@@ -88,7 +88,7 @@ export async function GET() {
       if (tradesResult.rows[0]?.count < 10) {
         dataIntegrity = false; // Low activity might indicate data issue
       }
-    } catch (error) {
+    } catch {
       dataIntegrity = false;
     }
 

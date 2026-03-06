@@ -15,23 +15,37 @@ const AINarrative: React.FC = () => {
     return null
   }, [events])
 
-  let latestML: any = null
+  let latestML: { symbol?: string; inference?: unknown; predictions?: unknown } | null = null;
   if (events && events.length > 0) {
-    for (const ev of events) {
-      if (!ev) continue
+    for (const evRaw of events) {
+      if (!evRaw || typeof evRaw !== 'object') continue;
+      const ev = evRaw as Record<string, unknown>;
+      const evStats = ev.stats && typeof ev.stats === 'object' ? (ev.stats as Record<string, unknown>) : undefined;
       // prefer merged ml_inference field inside broker payload
-      if (ev.ml_inference) {
-        latestML = { symbol: ev.symbol || ev?.stats?.symbol, inference: ev.ml_inference }
-        break
+      if ('ml_inference' in ev && ev.ml_inference) {
+        const symbolFromStats = evStats && typeof evStats.symbol === 'string' ? evStats.symbol : undefined;
+        const symbolField = typeof ev.symbol === 'string' ? ev.symbol : symbolFromStats;
+        latestML = { symbol: symbolField, inference: ev.ml_inference };
+        break;
       }
       if (ev.type === 'ml_inference') {
-        latestML = ev
-        break
+        latestML = {
+          symbol: typeof ev.symbol === 'string' ? ev.symbol : undefined,
+          inference: (ev.inference ?? ev.predictions) as unknown,
+        };
+        break;
       }
     }
   }
 
-  const summary = latestBrokerSummary ? `Brokers: ${latestBrokerSummary.stats?.total_brokers ?? (latestBrokerSummary.brokers ? latestBrokerSummary.brokers.length : 'N/A')} • Whales: ${latestBrokerSummary.stats?.whales ?? 'N/A'} • Anomalous: ${latestBrokerSummary.stats?.anomalous ?? 'N/A'}` : 'No narrative yet.'
+  const summary = (() => {
+    if (!latestBrokerSummary) return 'No narrative yet.'
+    const stats = latestBrokerSummary.stats && typeof latestBrokerSummary.stats === 'object' ? (latestBrokerSummary.stats as Record<string, unknown>) : undefined
+    const totalBrokers = typeof stats?.total_brokers === 'number' ? stats!.total_brokers : Array.isArray(latestBrokerSummary.brokers) ? latestBrokerSummary.brokers.length : 'N/A'
+    const whales = typeof stats?.whales === 'number' ? stats!.whales : 'N/A'
+    const anomalous = typeof stats?.anomalous === 'number' ? stats!.anomalous : 'N/A'
+    return `Brokers: ${totalBrokers} • Whales: ${whales} • Anomalous: ${anomalous}`
+  })()
 
   return (
     <div>

@@ -21,7 +21,7 @@ const ServiceHealth: React.FC = () => {
         if (!res.ok) return;
         const data = (await res.json()) as { services: ServiceStatus[] };
         if (mounted) setServices(data.services || []);
-      } catch (err) {
+      } catch {
         // ignore
       } finally {
         if (mounted) setLoading(false);

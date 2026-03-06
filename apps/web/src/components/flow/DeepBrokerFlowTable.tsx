@@ -36,7 +36,7 @@ export const DeepBrokerFlowTable: React.FC<{ symbol?: string }> = ({ symbol = 'B
           })) : mockRows();
           setRows(parsed);
         }
-      } catch (e) {
+      } catch {
         setRows(mockRows());
       } finally {
         if (mounted) setLoading(false);
