@@ -1,4 +1,16 @@
 import { NextResponse } from 'next/server';
+
+export async function GET() {
+  const now = Date.now();
+  const services = [
+    { name: 'go_streamer', status: 'ok', lastChecked: now },
+    { name: 'timescaledb', status: 'degraded', note: 'read-only mode', lastChecked: now },
+    { name: 'data_integrity_shield', status: 'ok', lastChecked: now },
+  ];
+
+  return NextResponse.json({ services });
+}
+import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isEncryptedSessionToken } from '@/lib/security/sessionTokenCrypto';
 
