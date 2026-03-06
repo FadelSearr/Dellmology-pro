@@ -1194,6 +1194,32 @@ func startHTTPServer() {
 		}
 	})
 
+	// REST Endpoint: /api/broker/zscore?symbol=BBCA&days=7
+	mux.HandleFunc("/api/broker/zscore", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			http.Error(w, "missing symbol parameter", http.StatusBadRequest)
+			return
+		}
+		days := 7
+		if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 365 {
+				days = parsed
+			}
+		}
+		rows, err := GetBrokerZScores(symbol, days)
+		if err != nil {
+			log.Printf("ERROR: GetBrokerZScores failed: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"symbol": symbol, "days": days, "rows": rows}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
 	// Debug endpoint: trigger AnalyzeBrokerFlow now, attach ML inference if available,
 	// broadcast result to SSE clients and return combined payload immediately.
 	mux.HandleFunc("/debug/broker/analyze-now", func(w http.ResponseWriter, r *http.Request) {
