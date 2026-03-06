@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+    "sync/atomic"
 	"time"
 
 	"context"
@@ -160,6 +161,13 @@ var (
 	lastTelegramEmergencyAlertAt time.Time
 	lastTelegramOfflineState bool
 	ErrTokenUnavailable = errors.New("token unavailable")
+
+    // ML inference metrics
+    mlFetchFailures int64
+    mlFetchSuccesses int64
+    mlMutex sync.Mutex
+    mlLastError string
+    mlLastChecked time.Time
 )
 
 // --- SSE Broker ---
@@ -1248,7 +1256,13 @@ func startHTTPServer() {
 			"queue_depth": queueDepth,
 			"processed_cache_size": processedCacheSize,
 			"dead_letter_count": deadLetterCount,
-			"checked_at": time.Now().UTC(),
+					"checked_at": time.Now().UTC(),
+					"ml_inference": map[string]interface{}{
+						"failures": atomic.LoadInt64(&mlFetchFailures),
+						"successes": atomic.LoadInt64(&mlFetchSuccesses),
+						"last_error": mlLastError,
+						"last_checked": mlLastChecked,
+					},
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -1345,6 +1359,12 @@ func fetchMLInference(symbol string) []byte {
 						wrapped["inference_raw"] = string(body)
 					}
 					if out, err := json.Marshal(wrapped); err == nil {
+						// record success
+						atomic.AddInt64(&mlFetchSuccesses, 1)
+						mlMutex.Lock()
+						mlLastError = ""
+						mlLastChecked = time.Now().UTC()
+						mlMutex.Unlock()
 						return out
 					}
 					lastErr = fmt.Errorf("marshal wrapped inference failed: %v", err)
@@ -1362,6 +1382,11 @@ func fetchMLInference(symbol string) []byte {
 	// record last error in cache (best-effort)
 	if lastErr != nil {
 		cacheSet("ml_last_error", map[string]interface{}{"error": lastErr.Error(), "symbol": symbol, "checked_at": time.Now().UTC()}, 5*time.Minute)
+		atomic.AddInt64(&mlFetchFailures, 1)
+		mlMutex.Lock()
+		mlLastError = lastErr.Error()
+		mlLastChecked = time.Now().UTC()
+		mlMutex.Unlock()
 	}
 	return nil
 }
