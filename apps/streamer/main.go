@@ -168,6 +168,11 @@ var (
     mlMutex sync.Mutex
     mlLastError string
     mlLastChecked time.Time
+	// ML circuit-breaker state
+	mlConsecutiveFailures int64
+	mlCircuitOpen bool
+	mlCircuitOpenedAt time.Time
+	mlCircuitMutex sync.Mutex
 )
 
 // --- SSE Broker ---
@@ -1238,6 +1243,26 @@ func startHTTPServer() {
 		fmt.Fprintf(w, "# TYPE ml_fetch_failures counter\n")
 		fmt.Fprintf(w, "ml_fetch_failures %d\n", failures)
 
+		// consecutive failures and circuit state
+		consec := atomic.LoadInt64(&mlConsecutiveFailures)
+		mlCircuitMutex.Lock()
+		copen := mlCircuitOpen
+		copened := mlCircuitOpenedAt
+		mlCircuitMutex.Unlock()
+		fmt.Fprintf(w, "# HELP ml_consecutive_failures Consecutive ML fetch failures\n")
+		fmt.Fprintf(w, "# TYPE ml_consecutive_failures gauge\n")
+		fmt.Fprintf(w, "ml_consecutive_failures %d\n", consec)
+
+		fmt.Fprintf(w, "# HELP ml_circuit_open ML circuit-breaker open (1=open,0=closed)\n")
+		fmt.Fprintf(w, "# TYPE ml_circuit_open gauge\n")
+		if copen {
+			fmt.Fprintf(w, "ml_circuit_open 1\n")
+			escTime := copened.UTC().Format(time.RFC3339)
+			fmt.Fprintf(w, "# ML circuit opened at %s\n", escTime)
+		} else {
+			fmt.Fprintf(w, "ml_circuit_open 0\n")
+		}
+
 		// expose last error as a labeled gauge if present
 		if lastErr != "" {
 			esc := escapeLabelValue(lastErr)
@@ -1283,13 +1308,22 @@ func startHTTPServer() {
 			"queue_depth": queueDepth,
 			"processed_cache_size": processedCacheSize,
 			"dead_letter_count": deadLetterCount,
-					"checked_at": time.Now().UTC(),
-					"ml_inference": map[string]interface{}{
-						"failures": atomic.LoadInt64(&mlFetchFailures),
-						"successes": atomic.LoadInt64(&mlFetchSuccesses),
-						"last_error": mlLastError,
-						"last_checked": mlLastChecked,
-					},
+						"checked_at": time.Now().UTC(),
+						"ml_inference": func() map[string]interface{} {
+							mlCircuitMutex.Lock()
+							copen := mlCircuitOpen
+							copened := mlCircuitOpenedAt
+							mlCircuitMutex.Unlock()
+							return map[string]interface{}{
+								"failures": atomic.LoadInt64(&mlFetchFailures),
+								"successes": atomic.LoadInt64(&mlFetchSuccesses),
+								"consecutive_failures": atomic.LoadInt64(&mlConsecutiveFailures),
+								"circuit_open": copen,
+								"circuit_opened_at": copened,
+								"last_error": mlLastError,
+								"last_checked": mlLastChecked,
+							}
+						}(),
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -1356,6 +1390,39 @@ func fetchMLInference(symbol string) []byte {
 		url = url + "?symbol=" + symbol
 	}
 
+	// circuit-breaker configuration
+	failureThreshold := 5
+	if raw := strings.TrimSpace(os.Getenv("ML_CIRCUIT_FAILURE_THRESHOLD")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 {
+			failureThreshold = parsed
+		}
+	}
+	cooldownSeconds := 60
+	if raw := strings.TrimSpace(os.Getenv("ML_CIRCUIT_COOLDOWN_SECONDS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 {
+			cooldownSeconds = parsed
+		}
+	}
+
+	// if circuit is open, check cooldown
+	mlCircuitMutex.Lock()
+	circuitOpen := mlCircuitOpen
+	openedAt := mlCircuitOpenedAt
+	mlCircuitMutex.Unlock()
+	if circuitOpen {
+		if time.Since(openedAt) < time.Duration(cooldownSeconds)*time.Second {
+			log.Printf("WARN: ML circuit open for %s, skipping inference (opened_at=%s)", symbol, openedAt.UTC().Format(time.RFC3339))
+			return nil
+		}
+		// cooldown expired: close circuit and reset consecutive failures
+		mlCircuitMutex.Lock()
+		mlCircuitOpen = false
+		mlCircuitOpenedAt = time.Time{}
+		mlCircuitMutex.Unlock()
+		atomic.StoreInt64(&mlConsecutiveFailures, 0)
+		log.Printf("INFO: ML circuit cooldown expired, resuming inference for %s", symbol)
+	}
+
 	var lastErr error
 	for attempt := 0; attempt <= retries; attempt++ {
 		client := &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second}
@@ -1393,6 +1460,12 @@ func fetchMLInference(symbol string) []byte {
 						mlLastError = ""
 						mlLastChecked = time.Now().UTC()
 						mlMutex.Unlock()
+						// reset consecutive failures and close circuit if open
+						atomic.StoreInt64(&mlConsecutiveFailures, 0)
+						mlCircuitMutex.Lock()
+						mlCircuitOpen = false
+						mlCircuitOpenedAt = time.Time{}
+						mlCircuitMutex.Unlock()
 						return out
 					}
 					lastErr = fmt.Errorf("marshal wrapped inference failed: %v", err)
@@ -1412,10 +1485,29 @@ func fetchMLInference(symbol string) []byte {
 		cacheSet("ml_last_error", map[string]interface{}{"error": lastErr.Error(), "symbol": symbol, "checked_at": time.Now().UTC()}, 5*time.Minute)
 		atomic.AddInt64(&mlFetchFailures, 1)
 		log.Printf("ERROR: ML inference failed for %s: %v", symbol, lastErr)
+		// increment consecutive failures and possibly open circuit
+		consec := atomic.AddInt64(&mlConsecutiveFailures, 1)
 		mlMutex.Lock()
 		mlLastError = lastErr.Error()
 		mlLastChecked = time.Now().UTC()
 		mlMutex.Unlock()
+
+		// check threshold and open circuit if needed
+		failureThreshold := 5
+		if raw := strings.TrimSpace(os.Getenv("ML_CIRCUIT_FAILURE_THRESHOLD")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 {
+				failureThreshold = parsed
+			}
+		}
+		if int(consec) >= failureThreshold {
+			mlCircuitMutex.Lock()
+			if !mlCircuitOpen {
+				mlCircuitOpen = true
+				mlCircuitOpenedAt = time.Now().UTC()
+				log.Printf("WARN: ML circuit opened due to %d consecutive failures", consec)
+			}
+			mlCircuitMutex.Unlock()
+		}
 	}
 	return nil
 }
