@@ -1315,8 +1315,21 @@ func startHTTPServer() {
 						continue
 					}
 				}
+				// broadcast broker analysis
 				if b, err := json.Marshal(payload); err == nil {
 					sseBroker.messages <- b
+				}
+
+				// compute and broadcast order-flow heatmap if anomalyDetector available
+				if anomalyDetector != nil {
+					if rows, err := anomalyDetector.CalculateHeatmap(context.Background(), sym, 60); err == nil {
+						heat := map[string]interface{}{"type": "order_flow_heatmap", "symbol": sym, "rows": rows}
+						if hb, err := json.Marshal(heat); err == nil {
+							sseBroker.messages <- hb
+						}
+					} else {
+						log.Printf("WARN: failed to calculate heatmap for %s: %v", sym, err)
+					}
 				}
 			}
 			time.Sleep(interval)
