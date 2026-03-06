@@ -337,7 +337,7 @@ export async function POST(request: NextRequest) {
         bid_ask_ratio: parseFloat(bid_ask_ratio || '1.0'),
         intensity: parseFloat(intensity || '0.5'),
         trade_count: 0,
-      } as any)
+      } as unknown)
       .select();
 
     if (error) {

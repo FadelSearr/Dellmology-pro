@@ -6,10 +6,17 @@ import { buildCoolingOffLockPayload } from '@/lib/security/lockPayloads';
 const MIN_BROKERS_FOR_ANALYSIS = 5;
 const MAX_NET_VALUE_THRESHOLD = 10_000_000_000_000; // 10 Trillion, a sanity limit
 
+type BrokerSummary = { broker_id?: string; net_buy_value?: number | string };
+
 // Helper function to format the data into a prompt
-const createPrompt = (symbol: string, date: string, summary: any[]): string => {
-  const topAccumulation = summary.filter(s => s.net_buy_value > 0).slice(0, 5);
-  const topDistribution = summary.filter(s => s.net_buy_value < 0).sort((a,b) => a.net_buy_value - b.net_buy_value).slice(0, 5);
+const createPrompt = (symbol: string, date: string, summary: BrokerSummary[]): string => {
+  const numericSummary = summary.map((s) => ({
+    broker_id: s.broker_id ?? 'unknown',
+    net_buy_value: Number(s.net_buy_value ?? 0),
+  }));
+
+  const topAccumulation = numericSummary.filter((s) => s.net_buy_value > 0).slice(0, 5);
+  const topDistribution = numericSummary.filter((s) => s.net_buy_value < 0).sort((a,b) => a.net_buy_value - b.net_buy_value).slice(0, 5);
 
   const prompt = `As a senior stock market analyst specializing in "bandarmology," analyze the following end-of-day broker summary data for stock symbol ${symbol} on ${date}. Provide a concise, insightful narrative in human language. Focus on identifying the behavior of "Whales" or "Smart Money."
 
@@ -50,8 +57,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const body = await request.json();
-    const { symbol, date, data } = body;
+      const body = await request.json();
+      const { symbol, date, data } = body as { symbol?: string; date?: string; data?: unknown };
 
     if (!symbol || !date || !data) {
       return NextResponse.json(
@@ -68,7 +75,8 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const totalNet = data.reduce((acc, cur) => acc + Number(cur.net_buy_value), 0);
+    const dataArray = data as BrokerSummary[];
+    const totalNet = dataArray.reduce((acc, cur) => acc + Number(cur.net_buy_value ?? 0), 0);
     if (Math.abs(totalNet) > MAX_NET_VALUE_THRESHOLD) {
         return NextResponse.json(
         { success: false, error: `Data failed sanity check. Total net value is outside the acceptable range.` },
