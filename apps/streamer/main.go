@@ -1060,6 +1060,12 @@ func startHTTPServer() {
 				payload := analysispkg.AnalyzeBrokerFlow(sym, 7)
 				if b, err := json.Marshal(payload); err == nil {
 					sseBroker.messages <- b
+					// Fire-and-forget: call local ML inference server and publish its result as a separate SSE event
+					go func(symbol string) {
+						if inf := fetchMLInference(symbol); inf != nil {
+							sseBroker.messages <- inf
+						}
+					}(sym)
 				}
 			}
 			time.Sleep(interval)
@@ -1196,6 +1202,63 @@ func connectWebSocket(token string) (*websocket.Conn, error) {
 	headers := http.Header{"Authorization": {"Bearer " + token}}
 	conn, _, err := websocket.DefaultDialer.Dial(websocketURL, headers)
 	return conn, err
+}
+
+// fetchMLInference calls a local HTTP inference service and wraps the
+// response into a small SSE-friendly JSON object. Returns marshaled JSON
+// bytes or nil on error.
+func fetchMLInference(symbol string) []byte {
+	inferenceURL := strings.TrimSpace(os.Getenv("ML_INFERENCE_URL"))
+	if inferenceURL == "" {
+		inferenceURL = "http://127.0.0.1:5000/infer"
+	}
+	// append symbol query param
+	url := inferenceURL
+	if strings.Contains(url, "?") {
+		url = url + "&symbol=" + symbol
+	} else {
+		url = url + "?symbol=" + symbol
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		log.Printf("WARN: ML inference request failed: %v", err)
+		return nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		log.Printf("WARN: ML inference returned status %d: %s", resp.StatusCode, string(body))
+		return nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("WARN: ML inference read failed: %v", err)
+		return nil
+	}
+
+	// Wrap the raw inference JSON as a message with a type
+	wrapper := map[string]json.RawMessage{}
+	// ensure the wrapped object contains symbol and inference
+	// Build a small object: {"type":"ml_inference","symbol":"SYM","inference":<raw>}
+	wrapped := map[string]interface{}{
+		"type":      "ml_inference",
+		"symbol":    symbol,
+	}
+	// try to unmarshal raw body into generic interface to attach
+	var inf interface{}
+	if err := json.Unmarshal(body, &inf); err == nil {
+		wrapped["inference"] = inf
+	} else {
+		// fallback: attach raw string
+		wrapped["inference_raw"] = string(body)
+	}
+
+	if out, err := json.Marshal(wrapped); err == nil {
+		return out
+	}
+	return nil
 }
 
 func getAuthToken() (string, error) {
