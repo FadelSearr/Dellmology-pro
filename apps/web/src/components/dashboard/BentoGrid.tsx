@@ -3,6 +3,7 @@ import ChartMain from './ChartMain'
 import { Section0_CommandBar } from '@/components/sections/Section0_CommandBar'
 import WhaleTable from './WhaleTable'
 import AINarrative from './AINarrative'
+import LiveBrokerAnalysis from './LiveBrokerAnalysis'
 
 const BentoGrid: React.FC = () => {
   const [symbol, setSymbol] = React.useState('BBCA')
@@ -20,7 +21,9 @@ const BentoGrid: React.FC = () => {
           <WhaleTable />
         </aside>
 
-        <section className="col-span-8 bg-gray-800/20 rounded p-3 mt-2">Unified Power Score & Heatmaps (Bottom-Center)</section>
+        <section className="col-span-8 bg-gray-800/20 rounded p-3 mt-2">
+          <LiveBrokerAnalysis />
+        </section>
         <section className="col-span-4 bg-gray-800/40 rounded p-3 mt-2">
           <AINarrative />
         </section>
