@@ -1058,14 +1058,25 @@ func startHTTPServer() {
 		for {
 			for _, sym := range symbols {
 				payload := analysispkg.AnalyzeBrokerFlow(sym, 7)
+				// optionally call ML inference and attach results into the same payload
+				if rawInf := fetchMLInference(sym); rawInf != nil {
+					var inf interface{}
+					if err := json.Unmarshal(rawInf, &inf); err == nil {
+						// attach under `ml_inference` key
+						m := map[string]interface{}{}
+						// convert original payload to map[string]interface{}
+						if pbytes, err := json.Marshal(payload); err == nil {
+							_ = json.Unmarshal(pbytes, &m)
+						}
+						m["ml_inference"] = inf
+						if b, err := json.Marshal(m); err == nil {
+							sseBroker.messages <- b
+						}
+						continue
+					}
+				}
 				if b, err := json.Marshal(payload); err == nil {
 					sseBroker.messages <- b
-					// Fire-and-forget: call local ML inference server and publish its result as a separate SSE event
-					go func(symbol string) {
-						if inf := fetchMLInference(symbol); inf != nil {
-							sseBroker.messages <- inf
-						}
-					}(sym)
 				}
 			}
 			time.Sleep(interval)
@@ -1239,7 +1250,6 @@ func fetchMLInference(symbol string) []byte {
 	}
 
 	// Wrap the raw inference JSON as a message with a type
-	wrapper := map[string]json.RawMessage{}
 	// ensure the wrapped object contains symbol and inference
 	// Build a small object: {"type":"ml_inference","symbol":"SYM","inference":<raw>}
 	wrapped := map[string]interface{}{
