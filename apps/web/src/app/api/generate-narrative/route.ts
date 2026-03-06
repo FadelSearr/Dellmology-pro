@@ -1,52 +1,48 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { readCoolingOffLockState } from '@/lib/security/coolingOff'
+import { buildCoolingOffLockPayload } from '@/lib/security/lockPayloads'
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { readCoolingOffLockState } from '@/lib/security/coolingOff';
 import { buildCoolingOffLockPayload } from '@/lib/security/lockPayloads';
 
-const MIN_BROKERS_FOR_ANALYSIS = 5;
-const MAX_NET_VALUE_THRESHOLD = 10_000_000_000_000; // 10 Trillion, a sanity limit
-
-type BrokerSummary = { broker_id?: string; net_buy_value?: number | string };
-
-// Helper function to format the data into a prompt
-const createPrompt = (symbol: string, date: string, summary: BrokerSummary[]): string => {
-  const numericSummary = summary.map((s) => ({
-    broker_id: s.broker_id ?? 'unknown',
-    net_buy_value: Number(s.net_buy_value ?? 0),
-  }));
-
-  const topAccumulation = numericSummary.filter((s) => s.net_buy_value > 0).slice(0, 5);
-  const topDistribution = numericSummary.filter((s) => s.net_buy_value < 0).sort((a,b) => a.net_buy_value - b.net_buy_value).slice(0, 5);
-
-  const prompt = `As a senior stock market analyst specializing in "bandarmology," analyze the following end-of-day broker summary data for stock symbol ${symbol} on ${date}. Provide a concise, insightful narrative in human language. Focus on identifying the behavior of "Whales" or "Smart Money."
-
-Data Overview:
-- Total Brokers Analyzed: ${summary.length}
-
-Top 5 Brokers with Strongest Accumulation (Net Buy):
-${topAccumulation.map(s => `- ${s.broker_id}: Net Buy Value of ${s.net_buy_value.toLocaleString()}`).join('\n')}
-
-Top 5 Brokers with Strongest Distribution (Net Sell):
-${topDistribution.map(s => `- ${s.broker_id}: Net Sell Value of ${Math.abs(s.net_buy_value).toLocaleString()}`).join('\n')}
-
-Based on this data, please answer the following:
-1.  **Main Conclusion**: Is there a clear sign of large-scale accumulation or distribution by institutional players?
-2.  **Key Players**: Which broker codes stand out as the primary drivers of this movement?
-3.  **Potential Strategy**: Based on this single-day analysis, what is the likely short-term sentiment for this stock? Is it being prepared for a markup, or is it under distribution pressure?
-4.  **Red Flags**: Are there any signs of "retail" excitement or panic that contrasts with the institutional flow?
-
-Provide the analysis in a brief, professional summary. Start with a clear "Conclusion:" line.
-`;
-  return prompt;
-}
 
 export async function POST(request: NextRequest) {
-  // 1. Check for API Key
-  if (!process.env.GEMINI_API_KEY) {
-    return NextResponse.json(
-      { success: false, error: "GEMINI_API_KEY is not set. Please add it to your .env.local file." },
-      { status: 500 }
-    );
+// Proxy /generate-narrative to the ML engine XAI /narrative endpoint.
+export async function POST(request: NextRequest) {
+  try {
+    const coolingOff = await readCoolingOffLockState()
+    if (coolingOff.active) {
+      return NextResponse.json(buildCoolingOffLockPayload(coolingOff, 'Cooling-off active: recommendation temporarily locked', true), {
+        status: 423,
+      })
+    }
+
+    const body = await request.json()
+    const symbol = body?.symbol
+    if (!symbol) return NextResponse.json({ success: false, error: 'symbol required' }, { status: 400 })
+
+    const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8001'
+
+    const resp = await fetch(`${ML_ENGINE_URL}/xai/narrative`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.ML_ENGINE_KEY || ''}`,
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!resp.ok) {
+      const text = await resp.text()
+      return NextResponse.json({ success: false, error: text }, { status: resp.status })
+    }
+
+    const json = await resp.json()
+    return NextResponse.json({ success: true, narrative: json.narrative || json }, { status: 200 })
+  } catch (err) {
+    console.error('Generate narrative proxy error', err)
+    return NextResponse.json({ success: false, error: err instanceof Error ? err.message : 'unknown' }, { status: 500 })
   }
   
   try {

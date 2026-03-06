@@ -12,6 +12,8 @@ Implemented (in repo):
  - XAI / AI Narrative API routes and ML engine proxy added (`apps/ml-engine/dellmology/intelligence/api.py`, registered in `apps/ml-engine/main.py`).
  - XAI / AI Narrative API routes and ML engine proxy added (`apps/ml-engine/dellmology/intelligence/api.py`, registered in `apps/ml-engine/main.py`).
  - Order Flow Heatmap aggregation worker and anomaly detector initialization in streamer (`apps/streamer/order_flow.go`, `apps/streamer/main.go`).
+ - Order Flow Heatmap aggregation worker and anomaly detector initialization in streamer (`apps/streamer/order_flow.go`, `apps/streamer/main.go`).
+ - Proxied AI Narrative generation through ML engine: web now forwards narrative requests to ML engine `/xai/narrative` to centralize Gemini usage (`apps/web/src/app/api/generate-narrative/route.ts`).
 
 Partially implemented / Needs credentials or hardening:
 - TimescaleDB / Supabase persistence: DB migrations exist (`db/init/*.sql`) but live persistence requires service URL / service role key.
