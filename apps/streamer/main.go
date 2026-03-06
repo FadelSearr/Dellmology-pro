@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"context"
+	"os/exec"
 
 	analysispkg "github.com/dellmology/streamer/internal/analysis"
 	"github.com/go-redis/redis/v8"
@@ -270,6 +271,10 @@ func main() {
 
 	sseBroker = newBroker()
 	go sseBroker.run()
+
+	// Start the alert-log rotation helper (best-effort, non-blocking).
+	// This will invoke the PowerShell rotation script if present on Windows.
+	go startLogRotation()
 
 	messageQueue = make(chan []byte, 2048)
 	if useExternalQueue && redisClient != nil {
@@ -797,6 +802,29 @@ func messageLoop(conn *websocket.Conn) {
 			log.Printf("WARN: message queue full, dropping message")
 		}
 	}
+}
+
+// startLogRotation attempts to run the scripts/rotate_alert_logs.ps1 PowerShell
+// helper at startup (best-effort). It runs in a goroutine and does not block
+// the main application if the script is missing or fails to start.
+func startLogRotation() {
+	scriptPath := "scripts\\rotate_alert_logs.ps1"
+	if _, err := os.Stat(scriptPath); err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("rotate script not found: %s (skipping)", scriptPath)
+			return
+		}
+		log.Printf("rotate script stat error: %v", err)
+		return
+	}
+
+	// Try to start the PowerShell script detached so it can run independently.
+	cmd := exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
+	if err := cmd.Start(); err != nil {
+		log.Printf("WARN: failed to start rotate script: %v", err)
+		return
+	}
+	log.Printf("Started rotate script (pid=%d)", cmd.Process.Pid)
 }
 
 func messageWorker(id int) {
