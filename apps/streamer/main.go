@@ -295,6 +295,27 @@ func main() {
 	defer db.Close()
 	log.Println("Successfully connected to the database.")
 
+	// Initialize anomaly detector for order-flow heatmap & anomalies
+	anomalyDetector = NewAnomalyDetector(db)
+	// Start aggregation worker for configured symbols
+	go func() {
+		symbolsEnv := strings.TrimSpace(os.Getenv("BROKER_POLL_SYMBOLS"))
+		symbols := []string{"BBCA"}
+		if symbolsEnv != "" {
+			parts := strings.Split(symbolsEnv, ",")
+			trimmed := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if s := strings.ToUpper(strings.TrimSpace(p)); s != "" {
+					trimmed = append(trimmed, s)
+				}
+			}
+			if len(trimmed) > 0 {
+				symbols = trimmed
+			}
+		}
+		anomalyDetector.StartAggregationWorker(context.Background(), symbols)
+	}()
+
 	go startHTTPServer()
 	go startWorkerHeartbeatReporter()
 	go startTelegramHeartbeatMonitor()
