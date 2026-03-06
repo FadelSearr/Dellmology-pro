@@ -1287,7 +1287,27 @@ func fetchMLInference(symbol string) []byte {
 	if inferenceURL == "" {
 		inferenceURL = "http://127.0.0.1:5000/infer"
 	}
-	// append symbol query param
+
+	timeoutSeconds := 3
+	if raw := strings.TrimSpace(os.Getenv("ML_INFERENCE_TIMEOUT_SECONDS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 {
+			timeoutSeconds = parsed
+		}
+	}
+	retries := 2
+	if raw := strings.TrimSpace(os.Getenv("ML_INFERENCE_RETRIES")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 {
+			retries = parsed
+		}
+	}
+	backoffMs := 200
+	if raw := strings.TrimSpace(os.Getenv("ML_INFERENCE_BACKOFF_MS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 50 {
+			backoffMs = parsed
+		}
+	}
+
+	// build URL with symbol param
 	url := inferenceURL
 	if strings.Contains(url, "?") {
 		url = url + "&symbol=" + symbol
@@ -1295,42 +1315,53 @@ func fetchMLInference(symbol string) []byte {
 		url = url + "?symbol=" + symbol
 	}
 
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		log.Printf("WARN: ML inference request failed: %v", err)
-		return nil
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("WARN: ML inference returned status %d: %s", resp.StatusCode, string(body))
-		return nil
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("WARN: ML inference read failed: %v", err)
-		return nil
+	var lastErr error
+	for attempt := 0; attempt <= retries; attempt++ {
+		client := &http.Client{Timeout: time.Duration(timeoutSeconds) * time.Second}
+		resp, err := client.Get(url)
+		if err != nil {
+			lastErr = err
+			log.Printf("WARN: ML inference request attempt %d failed: %v", attempt+1, err)
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+				body, _ := io.ReadAll(resp.Body)
+				lastErr = fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+				log.Printf("WARN: ML inference returned attempt %d status %d: %s", attempt+1, resp.StatusCode, string(body))
+			} else {
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					lastErr = err
+					log.Printf("WARN: ML inference read failed attempt %d: %v", attempt+1, err)
+				} else {
+					wrapped := map[string]interface{}{
+						"type":   "ml_inference",
+						"symbol": symbol,
+					}
+					var inf interface{}
+					if err := json.Unmarshal(body, &inf); err == nil {
+						wrapped["inference"] = inf
+					} else {
+						wrapped["inference_raw"] = string(body)
+					}
+					if out, err := json.Marshal(wrapped); err == nil {
+						return out
+					}
+					lastErr = fmt.Errorf("marshal wrapped inference failed: %v", err)
+				}
+			}
+		}
+
+		// if not last attempt, sleep exponential backoff
+		if attempt < retries {
+			sleepMs := backoffMs * (1 << attempt)
+			time.Sleep(time.Duration(sleepMs) * time.Millisecond)
+		}
 	}
 
-	// Wrap the raw inference JSON as a message with a type
-	// ensure the wrapped object contains symbol and inference
-	// Build a small object: {"type":"ml_inference","symbol":"SYM","inference":<raw>}
-	wrapped := map[string]interface{}{
-		"type":      "ml_inference",
-		"symbol":    symbol,
-	}
-	// try to unmarshal raw body into generic interface to attach
-	var inf interface{}
-	if err := json.Unmarshal(body, &inf); err == nil {
-		wrapped["inference"] = inf
-	} else {
-		// fallback: attach raw string
-		wrapped["inference_raw"] = string(body)
-	}
-
-	if out, err := json.Marshal(wrapped); err == nil {
-		return out
+	// record last error in cache (best-effort)
+	if lastErr != nil {
+		cacheSet("ml_last_error", map[string]interface{}{"error": lastErr.Error(), "symbol": symbol, "checked_at": time.Now().UTC()}, 5*time.Minute)
 	}
 	return nil
 }

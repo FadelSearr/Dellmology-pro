@@ -14,6 +14,9 @@ import threading
 import inference as inference_module
 
 
+START_TIME = time.time()
+
+
 class InferenceHandler(BaseHTTPRequestHandler):
     def _send_json(self, data, status=200):
         body = json.dumps(data).encode('utf-8')
@@ -25,9 +28,16 @@ class InferenceHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        # health endpoint
+        if parsed.path == '/health':
+            uptime = time.time() - START_TIME
+            self._send_json({'status': 'ok', 'uptime_seconds': uptime})
+            return
+
         if parsed.path != '/infer':
             self._send_json({'error': 'not found'}, status=404)
             return
+
         params = parse_qs(parsed.query)
         symbol = params.get('symbol', [''])[0]
         try:
