@@ -7,6 +7,7 @@ Dellmology Pro REST API
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
 
@@ -25,10 +26,37 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 # Create FastAPI app
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup / shutdown lifecycle manager replacing deprecated on_event startup."""
+    logger.info("Starting Dellmology API...")
+    if not validate_config():
+        logger.error("Configuration validation failed!")
+        raise RuntimeError("Invalid configuration")
+    logger.info("Configuration validated successfully")
+
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(lambda: broker_flow_main(), 'cron', hour=18, minute=0, id='broker_flow')
+    scheduler.add_job(lambda: exit_whale_main(), 'cron', hour=18, minute=15, id='exit_whale')
+    scheduler.start()
+    logger.info("Scheduled broker flow job (18:00 daily)")
+    logger.info("Scheduled exit whale detection job (18:15 daily)")
+
+    try:
+        yield
+    finally:
+        try:
+            scheduler.shutdown(wait=False)
+            logger.info("Scheduler shut down")
+        except Exception:
+            pass
+
+
 app = FastAPI(
     title="Dellmology Pro API",
     description="Advanced stock market analysis platform",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -45,23 +73,7 @@ app.include_router(screener_router)
 app.include_router(runtime_router)
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Startup event - validate configuration and kick off scheduled jobs"""
-    logger.info("Starting Dellmology API...")
-    if not validate_config():
-        logger.error("Configuration validation failed!")
-        raise RuntimeError("Invalid configuration")
-    logger.info("Configuration validated successfully")
 
-    # schedule broker flow job daily at 18:00
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(lambda: broker_flow_main(), 'cron', hour=18, minute=0, id='broker_flow')
-    # schedule exit whale detection shortly after broker flow (e.g. 18:15)
-    scheduler.add_job(lambda: exit_whale_main(), 'cron', hour=18, minute=15, id='exit_whale')
-    scheduler.start()
-    logger.info("Scheduled broker flow job (18:00 daily)")
-    logger.info("Scheduled exit whale detection job (18:15 daily)")
 
 
 @app.get("/health")

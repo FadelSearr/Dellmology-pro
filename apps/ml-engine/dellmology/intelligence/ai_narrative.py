@@ -6,7 +6,12 @@ Generates human-readable analysis using LLMs
 import logging
 import os
 from typing import Dict
-import google.generativeai as genai
+try:
+    # Prefer the new package if available
+    import google.genai as genai_new  # type: ignore
+except Exception:
+    genai_new = None
+genai = None
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +35,6 @@ def generate_narrative(analysis_data: Dict, symbol: str = None) -> str:
         return ""  # silent failure
 
     # configure generative ai client
-    genai.configure(api_key=api_key)
-
     stats = analysis_data.get("stats", {})
     top = analysis_data.get("top_pick")
     results = analysis_data.get("results", [])
@@ -54,14 +57,29 @@ def generate_narrative(analysis_data: Dict, symbol: str = None) -> str:
     prompt = "\n".join(prompt_lines)
 
     try:
-        # call Gemini
-        response = genai.responses.create(
-            model="gemini-1.5-flash",
-            input=prompt,
-            max_output_tokens=300
-        )
-        # response may provide output_text or structured
-        text = getattr(response, 'output_text', None) or ''
+        # Prefer the new GenAI client API if available
+        if genai_new is not None:
+            client = genai_new.Client(api_key=api_key)  # type: ignore
+            response = client.responses.generate(model="gemini-1.5-flash", input=prompt, max_output_tokens=300)
+            # Attempt to extract text from response structure
+            try:
+                text = response.output[0].content[0].text
+            except Exception:
+                text = getattr(response, 'output_text', '') or ''
+        else:
+            # Fallback to older package API. Import lazily and suppress the deprecation warning.
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=FutureWarning)
+                import google.generativeai as genai  # type: ignore
+            genai.configure(api_key=api_key)
+            response = genai.responses.create(
+                model="gemini-1.5-flash",
+                input=prompt,
+                max_output_tokens=300
+            )
+            # response may provide output_text or structured
+            text = getattr(response, 'output_text', None) or ''
         return text
     except Exception as exc:
         logger.error(f"Gemini API call failed: {exc}")

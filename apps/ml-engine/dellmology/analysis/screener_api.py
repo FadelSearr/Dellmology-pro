@@ -210,7 +210,7 @@ async def run_screening(request: ScreeningRequest, _=Depends(rate_limit_dep)):
                 ai_text = generate_narrative({
                     "stats": stats,
                     "top_pick": response_results[0] if response_results else None,
-                    "results": [r.dict() for r in response_results],
+                    "results": [r.model_dump() for r in response_results],
                 }, symbol=response_results[0].symbol if response_results else None)
             except Exception as ex:
                 logger.warning(f"AI narrative generation failed: {ex}")
@@ -249,7 +249,7 @@ async def run_screening(request: ScreeningRequest, _=Depends(rate_limit_dep)):
             ai_narrative=ai_text,
         )
 
-        cache_set(cache_key, final_resp.dict(), ttl=30)
+        cache_set(cache_key, final_resp.model_dump(), ttl=30)
         return final_resp
     except Exception as e:
         logger.error(f"Error during screening: {e}")
