@@ -5,6 +5,7 @@ import { Section0_CommandBar } from '../sections/Section0_CommandBar';
 import { AIScreener } from '../intelligence/AIScreener';
 import { Section1_MarketIntelligence } from '../sections/Section1_MarketIntelligence';
 import { NegotiatedMarketMonitor } from '../monitoring/NegotiatedMarketMonitor';
+import DeepBrokerFlowTable from '../flow/DeepBrokerFlowTable';
 
 
 export const MainLayout: React.FC = () => {
@@ -112,12 +113,14 @@ export const MainLayout: React.FC = () => {
                   UI simplified for fast decision-making.</p>
               </div>
               <Section1_MarketIntelligence symbol="BBCA" />
+              <DeepBrokerFlowTable symbol="BBCA" />
               <NegotiatedMarketMonitor />
             </div>
           ) : (
             <>
               <AIScreener />
               <Section1_MarketIntelligence symbol="BBCA" />
+              <DeepBrokerFlowTable symbol="BBCA" />
               <NegotiatedMarketMonitor />
             </>
           )}
