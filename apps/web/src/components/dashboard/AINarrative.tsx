@@ -3,7 +3,7 @@ import { useSSE } from '@/hooks/useSSE'
 
 const AINarrative: React.FC = () => {
   const streamUrl = (process.env.NEXT_PUBLIC_STREAMER_URL || '') + '/stream/broker-analysis'
-  const { lastEvent, events } = useSSE(streamUrl)
+  const { events } = useSSE(streamUrl)
 
   const latestBrokerSummary = useMemo(() => {
     if (!events || events.length === 0) return null

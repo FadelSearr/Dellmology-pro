@@ -19,7 +19,10 @@ export default function LiveBrokerAnalysis() {
     let es: EventSource | null = null;
     try {
       es = new EventSource(STREAM_URL, { withCredentials: false } as any);
-      setConnected(true);
+      es.onopen = () => {
+        setConnected(true);
+        setError(null);
+      };
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data);
@@ -38,7 +41,8 @@ export default function LiveBrokerAnalysis() {
       };
     } catch (err) {
       console.error('failed to open SSE', err);
-      setError(String(err));
+      // Defer state update to avoid synchronous setState inside effect
+      setTimeout(() => setError(String(err)), 0);
     }
 
     return () => {

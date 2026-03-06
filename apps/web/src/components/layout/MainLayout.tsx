@@ -30,9 +30,13 @@ export const MainLayout: React.FC = () => {
 
   useEffect(() => {
     // Combat mode triggers: high volatility or risk regime
-    setCombatMode(
-      volatility === 'HIGH' || regime === 'DOWNTREND' || regime === 'UPTREND'
-    );
+    // Defer update to avoid synchronous setState inside effect
+    const t = setTimeout(() => {
+      setCombatMode(
+        volatility === 'HIGH' || regime === 'DOWNTREND' || regime === 'UPTREND'
+      );
+    }, 0);
+    return () => clearTimeout(t);
   }, [regime, volatility]);
 
 
