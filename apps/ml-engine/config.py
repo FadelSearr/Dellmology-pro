@@ -47,6 +47,9 @@ class Config:
     # Logging Settings
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE = os.getenv('LOG_FILE', str(PROJECT_ROOT / 'logs' / 'dellmology.log'))
+
+    # Admin token for protecting sensitive endpoints (set in environment)
+    ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', '')
     
     # Feature Settings
     LOOKBACK_PERIOD = int(os.getenv('LOOKBACK_PERIOD', 60))  # Minutes
