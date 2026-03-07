@@ -5,7 +5,7 @@ Dellmology Pro REST API
 """
 
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import sys
@@ -21,6 +21,8 @@ from dellmology.intelligence.api import router as xai_router
 from broker_flow import main as broker_flow_main
 from exit_whale import main as exit_whale_main
 from apscheduler.schedulers.background import BackgroundScheduler
+from dellmology.utils.model_retrain_scheduler import schedule_retraining
+from dellmology.models.model_registry import registry as model_registry
 
 # Setup logging
 setup_logging()
@@ -43,6 +45,13 @@ async def lifespan(app: FastAPI):
     logger.info("Scheduled broker flow job (18:00 daily)")
     logger.info("Scheduled exit whale detection job (18:15 daily)")
 
+    # Schedule automated model retraining (default: weekdays 17:00)
+    try:
+        schedule_retraining(lambda: model_registry.trigger_retrain(epochs=5))
+        logger.info("Model retraining scheduler initialized")
+    except Exception:
+        logger.exception("Failed to initialize model retraining scheduler")
+
     try:
         yield
     finally:
@@ -59,6 +68,30 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+@app.get("/models/status")
+async def get_model_status():
+    """Return champion/challenger status and metrics"""
+    return model_registry.get_status()
+
+@app.post("/models/retrain")
+async def retrain_model(request: Request, epochs: int = 5):
+    """Trigger an asynchronous retrain job. Returns job id."""
+    # simple admin token protection
+    token = request.headers.get('x-admin-token')
+    if not token or token != Config.ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    job_id = model_registry.trigger_retrain(epochs=epochs)
+    return {"job_id": job_id, "status": "started"}
+
+@app.post("/models/promote")
+async def promote_model(request: Request):
+    """Promote current challenger to champion."""
+    token = request.headers.get('x-admin-token')
+    if not token or token != Config.ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    ok = model_registry.promote_challenger()
+    return {"promoted": ok}
 
 # Add CORS middleware
 app.add_middleware(
