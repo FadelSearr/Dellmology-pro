@@ -1,4 +1,6 @@
 
+"use client"
+
 import React, { useState, useEffect } from 'react';
 import { WatchlistSidebar } from '../intelligence/WatchlistSidebar';
 import { Section0_CommandBar } from '../sections/Section0_CommandBar';

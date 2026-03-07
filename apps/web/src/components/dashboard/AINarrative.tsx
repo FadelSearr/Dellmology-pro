@@ -9,8 +9,9 @@ const AINarrative: React.FC = () => {
     if (!events || events.length === 0) return null
     for (const ev of events) {
       if (!ev) continue
+      const e = ev as any
       // broker analysis payloads typically include `brokers` or `stats`
-      if (ev.brokers || ev.stats) return ev
+      if (e.brokers || e.stats) return e
     }
     return null
   }, [events])

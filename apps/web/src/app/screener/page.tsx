@@ -9,9 +9,7 @@ export default function ScreenerPage(){
   const [mode, setMode] = useState<'swing'|'daytrade'|'custom'>('swing')
   const [loading, setLoading] = useState(false)
 
-  useEffect(()=>{ fetchRows() }, [mode])
-
-  async function fetchRows(){
+  const fetchRows = async () => {
     setLoading(true)
     try{
       const res = await fetch(`/api/market/screener?mode=${mode}&limit=25`)
@@ -22,6 +20,8 @@ export default function ScreenerPage(){
     }
     setLoading(false)
   }
+
+  useEffect(()=>{ fetchRows() }, [mode])
 
   return (
     <div className="p-6 max-w-5xl">

@@ -9,8 +9,110 @@ from pathlib import Path
 from sqlalchemy import text, create_engine
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-ML_ENGINE_PATH = REPO_ROOT / 'apps' / 'ml-engine'
 MIGRATIONS_DIR = REPO_ROOT / 'db' / 'init'
+
+
+def split_top_level(sql_text: str):
+    """Split SQL into top-level statements on semicolons while
+    respecting single/double quotes, dollar-quoted blocks and
+    block/line comments. Returns list of statement strings.
+    """
+    parts = []
+    buf = []
+    i = 0
+    L = len(sql_text)
+    dollar_tag = None
+    single = False
+    double = False
+    line_comment = False
+    block_comment = False
+    paren = 0
+    while i < L:
+        ch = sql_text[i]
+        if line_comment:
+            if ch == '\n':
+                line_comment = False
+                buf.append(ch)
+            else:
+                buf.append(ch)
+            i += 1
+            continue
+        if block_comment:
+            if ch == '*' and i + 1 < L and sql_text[i + 1] == '/':
+                block_comment = False
+                buf.append('*/')
+                i += 2
+            else:
+                buf.append(ch)
+                i += 1
+            continue
+        if dollar_tag:
+            if ch == '$' and sql_text.startswith(dollar_tag, i):
+                buf.append(dollar_tag)
+                i += len(dollar_tag)
+                dollar_tag = None
+            else:
+                buf.append(ch)
+                i += 1
+            continue
+        if ch == '-' and i + 1 < L and sql_text[i + 1] == '-':
+            line_comment = True
+            buf.append('--')
+            i += 2
+            continue
+        if ch == '/' and i + 1 < L and sql_text[i + 1] == '*':
+            block_comment = True
+            buf.append('/*')
+            i += 2
+            continue
+        if ch == '$':
+            # attempt to read dollar tag
+            j = i + 1
+            tag = '$'
+            while j < L and (sql_text[j].isalnum() or sql_text[j] == '_'):
+                tag += sql_text[j]
+                j += 1
+            if j < L and sql_text[j] == '$':
+                tag += '$'
+                dollar_tag = tag
+                buf.append(tag)
+                i = j + 1
+                continue
+        if ch == "'" and not double:
+            single = not single
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == '"' and not single:
+            double = not double
+            buf.append(ch)
+            i += 1
+            continue
+        if not single and not double and ch == '(':
+            paren += 1
+            buf.append(ch)
+            i += 1
+            continue
+        if not single and not double and ch == ')':
+            if paren > 0:
+                paren -= 1
+            buf.append(ch)
+            i += 1
+            continue
+        if ch == ';' and not single and not double and not dollar_tag and paren == 0:
+            stmt = ''.join(buf).strip()
+            if stmt:
+                parts.append(stmt)
+            buf = []
+            i += 1
+            continue
+        buf.append(ch)
+        i += 1
+    tail = ''.join(buf).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
 
 if __name__ == '__main__':
     # Prefer using DATABASE_URL env var to avoid importing the whole package
@@ -68,75 +170,85 @@ if __name__ == '__main__':
             if '-- SUPABASE-ONLY' in sql and not is_supabase:
                 print(f"Skipping Supabase-only migration {f.name} because SUPABASE_URL/SERVICE_ROLE_KEY not set")
                 continue
-            if 'CREATE MATERIALIZED VIEW' in upper or 'CREATE MATERIALIZED VIEW CONCURRENTLY' in upper:
-                # Some Timescale/PG statements (CREATE MATERIALIZED VIEW WITH DATA)
-                # cannot run inside a transaction block. Prefer using a direct
-                # psycopg2 connection with autocommit enabled. Fall back to the
-                # SQLAlchemy raw_connection approach if psycopg2 is unavailable.
+
+            # Heuristic: files that need autocommit include CREATE MATERIALIZED VIEW
+            # or DO $$ blocks or other complex PL/pgSQL constructs. We'll attempt
+            # to execute those with a DBAPI autocommit connection and split
+            # into top-level statements to preserve dollar-quoted blocks.
+            needs_autocommit = 'CREATE MATERIALIZED VIEW' in upper or 'DO $$' in upper or 'CREATE MATERIALIZED VIEW CONCURRENTLY' in upper
+
+            if needs_autocommit:
                 executed = False
                 try:
                     import psycopg2
                     conninfo = db_url
-                    # Execute statements one-by-one; for CREATE MATERIALIZED VIEW
-                    # use a fresh autocommit connection per statement to avoid
-                    # any surrounding transaction.
-                    parts = [p.strip() for p in sql.split(';') if p.strip()]
-                    for part in parts:
-                        if part.upper().startswith('CREATE MATERIALIZED VIEW') or part.upper().startswith('CREATE MATERIALIZED VIEW CONCURRENTLY'):
-                            # use a fresh connection and set a reasonable statement timeout
-                            cconn = psycopg2.connect(conninfo)
-                            try:
-                                ccur = cconn.cursor()
-                                cconn.autocommit = True
-                                ccur.execute("SET statement_timeout = 300000")
-                                ccur.execute(part)
-                                ccur.close()
-                            finally:
-                                try:
-                                    cconn.close()
-                                except Exception:
-                                    pass
-                        else:
-                            # use a shared connection for non-problematic statements
-                            if 'conn2' not in locals():
-                                conn2 = psycopg2.connect(conninfo)
-                                conn2.autocommit = True
-                                cur2 = conn2.cursor()
-                                cur2.execute("SET statement_timeout = 300000")
-                            cur2.execute(part)
-                    if 'cur2' in locals():
-                        cur2.close()
-                    if 'conn2' in locals():
-                        conn2.close()
-                    executed = True
-                except Exception:
-                        # fallback to raw SQLAlchemy DBAPI connection
-                        import traceback
-                        print('psycopg2 execution failed, falling back:', traceback.format_exc())
+                    cconn = psycopg2.connect(conninfo)
+                    try:
+                        cconn.autocommit = True
+                        ccur = cconn.cursor()
+                        ccur.execute("SET statement_timeout = 300000")
                         try:
-                            raw = engine.raw_connection()
-                            if hasattr(raw, 'autocommit'):
-                                raw.autocommit = True
-                            cur = raw.cursor()
-                            parts = [p.strip() for p in sql.split(';') if p.strip()]
-                            for part in parts:
-                                try:
-                                    cur.execute(part)
-                                except Exception:
-                                    print('raw execute failed for part:', part[:120])
-                                    raise
-                            cur.close()
+                            # Try executing the full SQL script in one go (works for
+                            # PL/pgSQL DO $$ blocks and multi-statement files under
+                            # an autocommit connection).
+                            ccur.execute(sql)
                             executed = True
                         except Exception:
-                            print('raw connection fallback also failed:')
-                            import traceback as _tb
-                            print(_tb.format_exc())
-                            executed = False
+                            # If that fails, split into top-level statements and
+                            # execute only parts that contain actual SQL (skip
+                            # comment-only parts) to avoid "empty query" errors.
+                            parts = split_top_level(sql)
+                            def has_sql(stmt: str) -> bool:
+                                for line in stmt.splitlines():
+                                    s = line.strip()
+                                    if s and not s.startswith('--'):
+                                        return True
+                                return False
+                            for part in parts:
+                                if not has_sql(part):
+                                    continue
+                                try:
+                                    ccur.execute(part)
+                                except Exception:
+                                    print('failed part (first 200 chars):', part[:200])
+                                    raise
                         finally:
                             try:
-                                raw.close()
+                                ccur.close()
                             except Exception:
                                 pass
+                    finally:
+                        try:
+                            cconn.close()
+                        except Exception:
+                            pass
+                except Exception:
+                    import traceback
+                    print('psycopg2 execution failed, falling back:', traceback.format_exc())
+                    try:
+                        raw = engine.raw_connection()
+                        if hasattr(raw, 'autocommit'):
+                            raw.autocommit = True
+                        cur = raw.cursor()
+                        parts = [p.strip() for p in sql.split(';') if p.strip()]
+                        for part in parts:
+                            try:
+                                cur.execute(part)
+                            except Exception:
+                                print('raw execute failed for part:', part[:120])
+                                raise
+                        cur.close()
+                        executed = True
+                    except Exception:
+                        print('raw connection fallback also failed:')
+                        import traceback as _tb
+                        print(_tb.format_exc())
+                        executed = False
+                    finally:
+                        try:
+                            raw.close()
+                        except Exception:
+                            pass
 
                 if not executed:
                     raise RuntimeError('Failed to execute autocommit migration statements')

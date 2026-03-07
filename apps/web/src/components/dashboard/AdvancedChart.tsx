@@ -41,7 +41,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
     chartRef.current = chart;
 
     // Add candlestick series
-    const candlestickSeries = chart.addCandlestickSeries({
+    const candlestickSeries = (chart as any).addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
@@ -51,7 +51,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
     });
 
     // Add volume series (using histogram)
-    const volumeSeries = chart.addHistogramSeries({
+    const volumeSeries = (chart as any).addHistogramSeries({
       color: '#26c6da',
       title: 'Volume',
     });
@@ -85,14 +85,14 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
     };
 
     // Add 20-day SMA (Simple Moving Average)
-    const smaLine20 = chart.addLineSeries({
+    const smaLine20 = (chart as any).addLineSeries({
       color: '#f59e0b',
       lineWidth: 2,
       title: 'SMA 20',
     });
 
     // Add 50-day SMA
-    const smaLine50 = chart.addLineSeries({
+    const smaLine50 = (chart as any).addLineSeries({
       color: '#8b5cf6',
       lineWidth: 2,
       title: 'SMA 50',
@@ -217,26 +217,24 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
       <div className="grid grid-cols-4 gap-2 text-sm">
         <div className="bg-gray-800/50 border border-gray-700 rounded p-2">
           <span className="text-gray-400">Last:</span>
-          <span className="ml-2 text-white font-semibold">
-            {data.length > 0 ? data[data.length - 1].close : '-'}
-          </span>
+          <span className="ml-2 text-white font-semibold">-</span>
         </div>
         <div className="bg-gray-800/50 border border-gray-700 rounded p-2">
           <span className="text-gray-400">High:</span>
           <span className="ml-2 text-green-400 font-semibold">
-            {data.length > 0 ? Math.max(...data.map(d => d.high)) : '-'}
+            -
           </span>
         </div>
         <div className="bg-gray-800/50 border border-gray-700 rounded p-2">
           <span className="text-gray-400">Low:</span>
           <span className="ml-2 text-red-400 font-semibold">
-            {data.length > 0 ? Math.min(...data.map(d => d.low)) : '-'}
+            -
           </span>
         </div>
         <div className="bg-gray-800/50 border border-gray-700 rounded p-2">
           <span className="text-gray-400">Vol:</span>
           <span className="ml-2 text-cyan-400 font-semibold">
-            {data.length}M
+            -
           </span>
         </div>
       </div>

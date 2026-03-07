@@ -31,10 +31,10 @@ export const DeepBrokerFlowTable: React.FC<{ symbol?: string }> = ({ symbol = 'B
             broker: String(r.broker || r.name || 'UNK'),
             identity: (r.identity === 'Whale' || r.identity === 'Retail') ? (r.identity as 'Whale' | 'Retail') : 'Unknown',
             netValue: Number((r.netValue ?? r.net) || 0),
-            consistency: Number(r.consistency ?? r.cons || 0),
+            consistency: Number((r.consistency ?? r.cons) || 0),
             heatmap: Array.isArray(r.heatmap) ? (r.heatmap as unknown[]).map((n) => Number(n ?? 0)) : [0,0,0,0,0]
           })) : mockRows();
-          setRows(parsed);
+          setRows(parsed as BrokerRow[]);
         }
       } catch {
         setRows(mockRows());

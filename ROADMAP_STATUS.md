@@ -66,3 +66,13 @@ Update (2026-03-07):
 Next actions taken (planned): implement RLS skeleton and audit triggers, then update migrations and docs. Run the local integration (TimescaleDB + MinIO) after migrations.
 
 If kamu setuju, saya bisa lanjut: 1) mengaktifkan Supabase persistence ketika kredensial tersedia, 2) menambahkan RLS skeleton and audit logging, atau 3) lanjut implementasi fitur roadmap berikutnya yang kamu minta. Pilih nomor atau beri instruksi.
+
+Recent progress (2026-03-08):
+- Ran local integration E2E via `scripts/run_local_e2e.ps1`: `apps/ml-engine` tests executed against the local compose stack — 22 tests passed, 1 skipped.
+- Patched `apps/ml-engine/scripts/run_migrations.py` to execute Timescale/PLpgSQL migration files as a single autocommit statement (preserves dollar-quoted DO blocks). Re-ran migrations successfully; Timescale-specific continuous-aggregate statements are skipped when Supabase credentials are not set.
+- Ran frontend unit/smoke tests in `apps/web` — installed missing test dependency and executed the test suite: 20 test suites passed (51 tests total).
+
+Next recommended steps:
+- Validate Supabase RLS & continuous-aggregate policies once `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available.
+- Add a CI `docker-compose` E2E job that mirrors `scripts/run_local_e2e.ps1` for PR gating.
+- Optional: add lightweight CI smoke for the `screener` and `promotion` pages (headless browser or playwright) to catch runtime regressions.
