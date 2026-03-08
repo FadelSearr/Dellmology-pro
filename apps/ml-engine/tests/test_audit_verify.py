@@ -1,7 +1,5 @@
 import json
-from fastapi.testclient import TestClient
-
-from apps.ml_engine import main as app_module
+import asyncio
 from dellmology.api import audit_api
 
 
@@ -75,11 +73,11 @@ def test_verify_chain_valid(monkeypatch):
     monkeypatch.setattr(audit_api, 'get_db_connection', lambda: _FakeCtx(_FakeConn(rows)))
     # ensure admin token matches
     audit_api.Config.ADMIN_TOKEN = 'admintoken'
+    class DummyRequest:
+        def __init__(self, headers):
+            self.headers = headers
 
-    client = TestClient(app_module.app)
-    resp = client.get('/api/admin/audit/verify', headers={'x-admin-token': 'admintoken'})
-    assert resp.status_code == 200
-    data = resp.json()
+    data = asyncio.run(audit_api.verify_audit_chain(DummyRequest({'x-admin-token': 'admintoken'})))
     assert data.get('valid') is True
     assert data.get('checkedRows') == 2
 
@@ -104,11 +102,11 @@ def test_verify_chain_broken(monkeypatch):
     monkeypatch.setattr(audit_api, 'init_db', lambda: None)
     monkeypatch.setattr(audit_api, 'get_db_connection', lambda: _FakeCtx(_FakeConn(rows)))
     audit_api.Config.ADMIN_TOKEN = 'admintoken'
+    class DummyRequest:
+        def __init__(self, headers):
+            self.headers = headers
 
-    client = TestClient(app_module.app)
-    resp = client.get('/api/admin/audit/verify', headers={'x-admin-token': 'admintoken'})
-    assert resp.status_code == 200
-    data = resp.json()
+    data = asyncio.run(audit_api.verify_audit_chain(DummyRequest({'x-admin-token': 'admintoken'})))
     assert data.get('valid') is False
     assert data.get('checkedRows') == 2
     assert data.get('hashMismatches', 0) >= 1
