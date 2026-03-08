@@ -50,3 +50,51 @@ def rls_smoke_check():
     except Exception as e:
         logger.exception('RLS smoke check failed')
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/refresh-aggregates')
+def refresh_continuous_aggregates(view: str | None = None):
+    """Refresh or schedule refresh for Timescale continuous aggregates.
+
+    If `view` is provided, attempt to refresh that materialized view; otherwise
+    attempt to refresh all known aggregates defined in `db/init/06-performance-aggregates.sql`.
+    This call is guarded and will return a helpful message when TimescaleDB
+    is not available in the target database.
+    """
+    try:
+        init_db()
+    except Exception:
+        logger.warning('Database not initialized for refresh_continuous_aggregates')
+        raise HTTPException(status_code=503, detail='database_not_ready')
+
+    known = [
+        'order_flow_heatmap_1min_mv',
+        'order_flow_anomaly_5min_mv',
+        'market_depth_summary_hourly_mv'
+    ]
+    targets = [view] if view else known
+
+    try:
+        with get_db_connection() as conn:
+            # Ensure TimescaleDB extension exists
+            ext = conn.execute(text("SELECT COUNT(*) FROM pg_extension WHERE extname = 'timescaledb'")).scalar()
+            if not ext or int(ext) == 0:
+                return {'refreshed': False, 'reason': 'timescaledb_not_available'}
+
+            results = {}
+            for v in targets:
+                if v not in known:
+                    results[v] = {'skipped': True, 'reason': 'unknown_view'}
+                    continue
+                try:
+                    # Call TimescaleDB refresh continuous aggregate; use NULL bounds to trigger full refresh
+                    conn.execute(text("SELECT refresh_continuous_aggregate(:view, NULL, NULL)"), {'view': v})
+                    results[v] = {'refreshed': True}
+                except Exception as ie:
+                    logger.exception('Failed to refresh %s', v)
+                    results[v] = {'refreshed': False, 'error': str(ie)}
+
+        return {'results': results}
+    except Exception as e:
+        logger.exception('Failed refresh_continuous_aggregates')
+        raise HTTPException(status_code=500, detail=str(e))
