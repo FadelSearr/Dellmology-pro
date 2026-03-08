@@ -49,6 +49,14 @@ jobs:
           name: workspace.tar.gz
           path: workspace.tar.gz
 
+      - name: Create CI debug marker
+        if: always()
+        run: |
+          echo "CI run: $(date)" > ci_debug.txt
+          echo "Runner: $RUNNER_OS $RUNNER_TEMP" >> ci_debug.txt || true
+          echo "Top-level listing:" >> ci_debug.txt
+          ls -la >> ci_debug.txt || true
+
       - name: Debug: list scripts
         run: |
           echo "Workspace files:" && ls -la
@@ -130,6 +138,13 @@ jobs:
         with:
           name: docker_logs
           path: docker_logs.tar.gz
+
+      - name: Upload CI debug marker
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci_debug
+          path: ci_debug.txt
 
       - name: Upload migrations log
         uses: actions/upload-artifact@v4
