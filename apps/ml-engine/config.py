@@ -50,6 +50,14 @@ class Config:
 
     # Admin token for protecting sensitive endpoints (set in environment)
     ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', '')
+    # Optional: shared secret for JWT admin tokens (HS256). If set, incoming
+    # Bearer tokens will be validated as JWTs and must include a `role` claim
+    # equal to 'admin' (or 'service_role'). This provides better key rotation
+    # and delegated token issuance workflows.
+    ADMIN_JWT_SECRET = os.getenv('ADMIN_JWT_SECRET', '')
+    ADMIN_JWT_ALGORITHM = os.getenv('ADMIN_JWT_ALGORITHM', 'HS256')
+    # Shared key used by the web server to call ML engine admin proxies
+    ML_ENGINE_KEY = os.getenv('ML_ENGINE_KEY', '')
 
     # Supabase / Supabase-compatible persistence (optional)
     # Provide SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to enable Supabase-specific

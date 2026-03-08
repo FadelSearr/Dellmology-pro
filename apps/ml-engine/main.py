@@ -6,6 +6,10 @@ Dellmology Pro REST API
 
 import logging
 from fastapi import FastAPI, Request, HTTPException
+import base64
+import json as _json
+import hmac
+import hashlib
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -22,6 +26,7 @@ from dellmology.analysis.screener_api import router as screener_router
 from dellmology.analysis.runtime_api import router as runtime_router
 from dellmology.intelligence.api import router as xai_router
 from dellmology.api.audit_api import router as audit_router
+from dellmology.api.aggregates_api import router as aggregates_router
 from broker_flow import main as broker_flow_main
 from exit_whale import main as exit_whale_main
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -115,8 +120,49 @@ def _require_admin(request: Request):
         auth = request.headers.get('authorization') or request.headers.get('Authorization')
         if auth and auth.lower().startswith('bearer '):
             token = auth.split(' ', 1)[1].strip()
-    if not token or token != Config.ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail='Unauthorized')
+    # If ADMIN_JWT_SECRET is configured, accept and validate JWTs (HS256)
+    if token:
+        # Quick path: plain token equality with static ADMIN_TOKEN or ML_ENGINE_KEY
+        if token == Config.ADMIN_TOKEN or token == Config.ML_ENGINE_KEY:
+            return
+        # Try JWT verification if secret is available
+        if Config.ADMIN_JWT_SECRET:
+            payload = _verify_jwt_hs256(token, Config.ADMIN_JWT_SECRET)
+            if payload and isinstance(payload, dict):
+                role = payload.get('role') or payload.get('roles')
+                if role == 'admin' or role == 'service_role' or (isinstance(role, list) and 'admin' in role):
+                    return
+    raise HTTPException(status_code=401, detail='Unauthorized')
+
+
+def _verify_jwt_hs256(token: str, secret: str):
+    """Lightweight HS256 JWT verification without external deps.
+    Returns payload dict on success or None on failure.
+    """
+    try:
+        parts = token.split('.')
+        if len(parts) != 3:
+            return None
+        header_b, payload_b, sig_b = parts
+        def _b64u_decode(x):
+            rem = len(x) % 4
+            if rem:
+                x += '=' * (4 - rem)
+            return base64.urlsafe_b64decode(x.encode('utf-8'))
+
+        header = _json.loads(_b64u_decode(header_b))
+        alg = header.get('alg', '')
+        if alg.upper() != 'HS256':
+            return None
+        signing_input = (header_b + '.' + payload_b).encode('utf-8')
+        expected = hmac.new(secret.encode('utf-8'), signing_input, hashlib.sha256).digest()
+        sig = _b64u_decode(sig_b)
+        if not hmac.compare_digest(expected, sig):
+            return None
+        payload = _json.loads(_b64u_decode(payload_b))
+        return payload
+    except Exception:
+        return None
 
 
 @app.middleware("http")
@@ -127,8 +173,12 @@ async def audit_middleware(request: Request, call_next):
         token = request.headers.get('x-admin-token') or request.headers.get('authorization')
         if token and token.startswith('Bearer '):
             token = token.split(' ', 1)[1].strip()
-        if token and token == Config.ADMIN_TOKEN:
+        if token and (token == Config.ADMIN_TOKEN or token == Config.ML_ENGINE_KEY):
             is_admin = True
+        elif token and Config.ADMIN_JWT_SECRET:
+            payload = _verify_jwt_hs256(token, Config.ADMIN_JWT_SECRET)
+            if payload and (payload.get('role') == 'admin' or payload.get('role') == 'service_role' or (isinstance(payload.get('role'), list) and 'admin' in payload.get('role'))):
+                is_admin = True
     except Exception:
         is_admin = False
 
@@ -310,6 +360,7 @@ app.include_router(screener_router)
 app.include_router(runtime_router)
 app.include_router(xai_router)
 app.include_router(audit_router)
+app.include_router(aggregates_router)
 
 
 

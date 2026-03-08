@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/aggregates", tags=["aggregates"])
 
 
 @router.get('/order_flow/heatmap/1min')
-async def get_order_flow_heatmap_1min(limit: int = 100):
+def get_order_flow_heatmap_1min(limit: int = 100):
     """Return recent buckets from the continuous aggregate `order_flow_heatmap_1min_mv`.
 
     This endpoint is read-only and safe to call without admin privileges.
