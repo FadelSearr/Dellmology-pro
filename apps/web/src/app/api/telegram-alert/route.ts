@@ -34,11 +34,15 @@ export async function POST(req: NextRequest) {
     // Forward to Python ML engine
     const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8001';
     
+    const incomingAuth = req.headers.get('authorization')
+    const authHeader = incomingAuth || (process.env.ML_ENGINE_KEY ? `Bearer ${process.env.ML_ENGINE_KEY}` : '')
+    const headers: Record<string,string> = { 'Content-Type': 'application/json' }
+    if (authHeader) headers['Authorization'] = authHeader
+
     const response = await fetch(`${ML_ENGINE_URL}/telegram/alert`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.ML_ENGINE_KEY || ''}`,
+        ...headers,
       },
       body: JSON.stringify(payload),
     });
@@ -83,9 +87,14 @@ export async function GET(req: NextRequest) {
     if (symbol) query.append('symbol', symbol);
     query.append('limit', limit.toString());
 
+    const incomingAuth = req.headers.get('authorization')
+    const authHeader = incomingAuth || (process.env.ML_ENGINE_KEY ? `Bearer ${process.env.ML_ENGINE_KEY}` : '')
+    const headers: Record<string,string> = {}
+    if (authHeader) headers['Authorization'] = authHeader
+
     const response = await fetch(`${ML_ENGINE_URL}/telegram/history?${query}`, {
       headers: {
-        'Authorization': `Bearer ${process.env.ML_ENGINE_KEY || ''}`,
+        ...headers,
       },
     });
 

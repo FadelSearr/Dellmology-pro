@@ -1,11 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8001'
+    const incomingAuth = request.headers.get('authorization')
+    const authHeader = incomingAuth || (process.env.ML_ENGINE_KEY ? `Bearer ${process.env.ML_ENGINE_KEY}` : '')
+    const headers: Record<string,string> = {}
+    if (authHeader) headers['Authorization'] = authHeader
+
     const resp = await fetch(`${ML_ENGINE_URL}/retrain/status`, {
       headers: {
-        'Authorization': `Bearer ${process.env.ML_ENGINE_KEY || ''}`,
+        ...headers,
       },
     })
 
