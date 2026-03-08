@@ -82,7 +82,8 @@ def refresh_continuous_aggregates(view: str | None = None):
                 return {'refreshed': False, 'reason': 'timescaledb_not_available'}
 
             results = {}
-            exists_q = text("SELECT 1 FROM timescaledb_information.continuous_aggregates WHERE view_name = :view")
+            # Prefer direct relation check to avoid TimescaleDB metadata inconsistencies
+            exists_q = text("SELECT 1 FROM pg_class WHERE relname = :view AND relkind = 'm'")
             for v in targets:
                 if v not in known:
                     results[v] = {'skipped': True, 'reason': 'unknown_view'}
