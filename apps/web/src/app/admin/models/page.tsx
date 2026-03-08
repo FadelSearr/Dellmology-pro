@@ -97,6 +97,39 @@ export default function AdminModelsPage() {
     }
   }
 
+  async function loadRetrainStatus() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/maintenance/retrain-status')
+      if (!res.ok) throw new Error(await res.text())
+      const json = await res.json()
+      setStatus((prev: any) => ({...prev, retrain_status: json}))
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load retrain status')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function updateRetrainSchedule() {
+    const cron = (document.getElementById('cron-input') as HTMLInputElement)?.value
+    const epochs = parseInt((document.getElementById('epochs-input') as HTMLInputElement)?.value || '5', 10)
+    if (!cron) { setError('cron required'); return }
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/maintenance/retrain-schedule', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ cron, epochs }) })
+      if (!res.ok) throw new Error(await res.text())
+      const json = await res.json()
+      setStatus((prev: any) => ({...prev, retrain_update: json}))
+    } catch (err: any) {
+      setError(err?.message || 'Failed to update')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <h2>Model Admin</h2>
@@ -106,6 +139,7 @@ export default function AdminModelsPage() {
         <button onClick={promoteModel} disabled={loading}>Promote Challenger</button>
         <button onClick={runBacktest} disabled={loading} style={{ marginLeft: 8 }}>Run Backtest</button>
         <button onClick={loadCheckpoints} disabled={loading} style={{ marginLeft: 8 }}>List Checkpoints</button>
+        <button onClick={loadRetrainStatus} disabled={loading} style={{ marginLeft: 8 }}>Load Retrain Status</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       {status && (
@@ -121,6 +155,17 @@ export default function AdminModelsPage() {
               </ul>
             </div>
           )}
+          <div style={{ marginTop: 12 }}>
+            <h4>Retrain Scheduler</h4>
+            <div style={{ marginBottom: 8 }}>
+              <input id="cron-input" placeholder="min hour day month dow (cron)" style={{ width: 360, marginRight: 8 }} />
+              <input id="epochs-input" placeholder="epochs" style={{ width: 80, marginRight: 8 }} defaultValue="5" />
+              <button onClick={updateRetrainSchedule} disabled={loading}>Update Schedule</button>
+            </div>
+            {status.retrain_status && (
+              <pre style={{ background: '#eef', padding: 8 }}>{JSON.stringify(status.retrain_status, null, 2)}</pre>
+            )}
+          </div>
         </div>
       )}
     </div>
