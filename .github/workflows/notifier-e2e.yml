@@ -23,16 +23,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-          - name: Run CI health check
-            run: |
-              python apps/ml-engine/scripts/ci_health_check.py 2>&1 | tee ci_health_check.log
+      - name: Run CI health check
+        run: |
+          python apps/ml-engine/scripts/ci_health_check.py 2>&1 | tee ci_health_check.log
 
-          - name: Upload CI health check artifact
-            if: always()
-            uses: actions/upload-artifact@v4
-            with:
-              name: ci_health_check
-              path: ci_health_check.log
+      - name: Upload CI health check artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci_health_check
+          path: ci_health_check.log
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -73,6 +73,14 @@ jobs:
           mkdir -p artifacts
           tar --exclude='.git' --exclude='venv' -czf artifacts/workspace.tar.gz . || true
 
+      - name: Create CI debug marker
+        if: always()
+        run: |
+          echo "CI run: $(date)" > ci_debug.txt
+          echo "Runner: $RUNNER_OS $RUNNER_TEMP" >> ci_debug.txt || true
+          echo "Listing top-level files:" >> ci_debug.txt
+          ls -la >> ci_debug.txt || true
+
       - name: Upload notifier artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -83,3 +91,4 @@ jobs:
             apps/ml-engine/logs/ups_events.jsonl
             apps/ml-engine/logs/*.log
             ci_health_check.log
+            ci_debug.txt
