@@ -135,3 +135,93 @@ def retrain_schedule(body: dict):
     except Exception as e:
         logger.exception('Failed to update retrain schedule')
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get('/retrain-eval-status')
+def retrain_eval_status():
+    """Return evaluation scheduler status and next run time."""
+    try:
+        from dellmology.utils.model_retrain_scheduler import get_eval_status
+        return get_eval_status()
+    except Exception as e:
+        logger.exception('Failed to get eval status')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/retrain-eval-schedule')
+def retrain_eval_schedule(body: dict):
+    """Update evaluation schedule.
+
+    Body: { "cron": "min hour day month dow", "auto_promote": true }
+    """
+    cron = body.get('cron')
+    auto_promote = bool(body.get('auto_promote', False))
+    if not cron:
+        raise HTTPException(status_code=400, detail='cron required')
+    try:
+        from dellmology.utils.model_retrain_scheduler import start_eval_scheduler
+        from dellmology.models.model_registry import registry
+
+        # schedule evaluation job that calls registry.evaluate_and_promote
+        start_eval_scheduler(lambda: registry.evaluate_and_promote(auto_promote=auto_promote), cron)
+        return {'updated': True, 'cron': cron, 'auto_promote': auto_promote}
+    except Exception as e:
+        logger.exception('Failed to update eval schedule')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post('/evaluate-promote')
+def evaluate_promote(body: dict | None = None):
+    """Evaluate current challenger against champion and optionally promote.
+
+    Body example: { "auto_promote": true }
+    """
+    try:
+        auto = False
+        if body and isinstance(body, dict):
+            auto = bool(body.get('auto_promote', False))
+        from dellmology.models.model_registry import registry
+        result = registry.evaluate_and_promote(auto_promote=auto)
+
+        # Best-effort: persist evaluation result to ml_model_evaluations table
+        try:
+            init_db()
+            with get_db_connection() as conn:
+                try:
+                    insert_q = text(
+                        "INSERT INTO public.ml_model_evaluations (model_name, champion, challenger, metrics, passed, created_at) VALUES (:name, :champ, :challenger, :metrics::jsonb, :passed, now())"
+                    )
+                    conn.execute(insert_q, {
+                        'name': result.get('challenger'),
+                        'champ': result.get('champion'),
+                        'challenger': result.get('challenger'),
+                        'metrics': json.dumps(result.get('challenger_metrics', {})),
+                        'passed': bool(result.get('passed', False)),
+                    })
+                except Exception:
+                    # Table may not exist in minimal DB; ignore
+                    pass
+        except Exception:
+            logger.debug('DB not available; skipping evaluation persistence')
+
+        # Best-effort: record UPS event to local UPS log (apps/ml-engine/logs/ups_events.jsonl)
+        try:
+            from pathlib import Path
+            logs_dir = Path(__file__).parent.parent.parent / 'logs'
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            out_file = logs_dir / 'ups_events.jsonl'
+            ups_entry = {
+                'ts': __import__('datetime').datetime.utcnow().isoformat() + 'Z',
+                'source': 'model_evaluation',
+                'type': 'evaluation',
+                'payload': result
+            }
+            with out_file.open('a', encoding='utf-8') as fh:
+                fh.write(json.dumps(ups_entry, ensure_ascii=False) + '\n')
+        except Exception:
+            logger.exception('Failed to write UPS event for evaluation')
+
+        return result
+    except Exception as e:
+        logger.exception('Failed to evaluate/promote challenger')
+        raise HTTPException(status_code=500, detail=str(e))
