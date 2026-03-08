@@ -1,3 +1,14 @@
+Recent progress (2026-03-08):
+- Added a server-side audit verification API (`GET /api/admin/audit/verify`) and wired it into the admin audit UI (`apps/web/src/app/admin/audit/page.tsx`).
+- Added a server-side verification endpoint in `apps/ml-engine/dellmology/api/audit_api.py` and unit tests in `apps/ml-engine/tests/test_audit_verify.py` (passed locally).
+- Implemented admin model controls (retrain/promote/status) and server-side proxy routes in `apps/web/src/app/api/ml/*` and UI at `apps/web/src/app/admin/models/page.tsx`.
+- Hardened RLS policies with `db/init/13-rls-hardening.sql` and added a CI-friendly RLS presence test `apps/ml-engine/tests/test_rls_policies.py`.
+- Improved migration runner (`apps/ml-engine/scripts/run_migrations.py`) to auto-create the target DB if missing.
+- Added a PR template `.github/PULL_REQUEST_TEMPLATE.md` to prepare for opening a PR that will trigger the TimescaleDB E2E workflow.
+
+Pending validation:
+- TimescaleDB E2E workflow (`.github/workflows/timescaledb-e2e.yml`) pending run on a PR to validate migrations, RLS, and the verification API.
+- Local migration readiness still requires Docker daemon availability for full end-to-end checks.
 # ROADMAP Implementation Status
 
 Ringkasan status implementasi roadmap terhadap kode yang ada di repository saat ini (per 2026-03-08).
