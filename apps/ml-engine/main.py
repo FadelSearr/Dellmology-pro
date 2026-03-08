@@ -10,6 +10,7 @@ import base64
 import json as _json
 import hmac
 import hashlib
+from dellmology.utils.jwks import verify_jwt_rs256
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -128,6 +129,13 @@ def _require_admin(request: Request):
         # Try JWT verification if secret is available
         if Config.ADMIN_JWT_SECRET:
             payload = _verify_jwt_hs256(token, Config.ADMIN_JWT_SECRET)
+            if payload and isinstance(payload, dict):
+                role = payload.get('role') or payload.get('roles')
+                if role == 'admin' or role == 'service_role' or (isinstance(role, list) and 'admin' in role):
+                    return
+        # If JWKS URL configured, try RS256 verification via JWKS
+        if Config.ADMIN_JWKS_URL:
+            payload = verify_jwt_rs256(token, Config.ADMIN_JWKS_URL, Config.ADMIN_JWKS_AUDIENCE, Config.ADMIN_JWKS_CACHE_TTL)
             if payload and isinstance(payload, dict):
                 role = payload.get('role') or payload.get('roles')
                 if role == 'admin' or role == 'service_role' or (isinstance(role, list) and 'admin' in role):
