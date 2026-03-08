@@ -8,11 +8,15 @@ export async function POST(req: NextRequest) {
     if (!symbol) return NextResponse.json({ error: 'symbol required' }, { status: 400 })
 
     const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8001'
+    const incomingAuth = req.headers.get('authorization')
+    const authHeader = incomingAuth || (process.env.ML_ENGINE_KEY ? `Bearer ${process.env.ML_ENGINE_KEY}` : '')
+    const headers: Record<string,string> = { 'Content-Type': 'application/json' }
+    if (authHeader) headers['Authorization'] = authHeader
+
     const resp = await fetch(`${ML_ENGINE_URL}/xai/explain`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.ML_ENGINE_KEY || ''}`,
+        ...headers,
       },
       body: JSON.stringify({ symbol, top_k }),
     })

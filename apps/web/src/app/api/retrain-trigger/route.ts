@@ -5,11 +5,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8001'
 
+    const incomingAuth = req.headers.get('authorization')
+    const authHeader = incomingAuth || (process.env.ML_ENGINE_KEY ? `Bearer ${process.env.ML_ENGINE_KEY}` : '')
+    const headers: Record<string,string> = { 'Content-Type': 'application/json' }
+    if (authHeader) headers['Authorization'] = authHeader
+
     const resp = await fetch(`${ML_ENGINE_URL}/retrain/trigger`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.ML_ENGINE_KEY || ''}`,
+        ...headers,
       },
       body: JSON.stringify(body),
     })
