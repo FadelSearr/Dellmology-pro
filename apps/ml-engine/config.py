@@ -58,6 +58,12 @@ class Config:
     ADMIN_JWT_ALGORITHM = os.getenv('ADMIN_JWT_ALGORITHM', 'HS256')
     # Shared key used by the web server to call ML engine admin proxies
     ML_ENGINE_KEY = os.getenv('ML_ENGINE_KEY', '')
+    # JWKS (JSON Web Key Set) URL to validate RS256 tokens issued by an auth provider
+    ADMIN_JWKS_URL = os.getenv('ADMIN_JWKS_URL', '')
+    # Optional expected audience for JWTs
+    ADMIN_JWKS_AUDIENCE = os.getenv('ADMIN_JWKS_AUDIENCE', '')
+    # JWKS cache TTL in seconds
+    ADMIN_JWKS_CACHE_TTL = int(os.getenv('ADMIN_JWKS_CACHE_TTL', '300'))
 
     # Supabase / Supabase-compatible persistence (optional)
     # Provide SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to enable Supabase-specific

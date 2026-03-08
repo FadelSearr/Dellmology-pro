@@ -17,3 +17,5 @@ apscheduler
 redis
 pytest
 boto3
+PyJWT
+cryptography
