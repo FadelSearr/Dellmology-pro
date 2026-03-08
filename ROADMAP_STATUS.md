@@ -88,6 +88,22 @@ Recent progress (2026-03-08):
 - Reviewed and updated `ROADMAP_STATUS.md` with current repository findings and timestamp.
  - Added an audit verification API and wired it into the admin audit UI so verification results display in `apps/web/src/app/admin/audit/page.tsx`.
 
+Update (2026-03-08, final): CI E2E validation completed and roadmap items verified
+- E2E run (compose-e2e) on branch `ci/trigger-e2e` completed successfully (run ID 22816247797). Migrations applied up through `db/init/13-rls-hardening.sql`.
+- Backend tests: 26 passed, 1 skipped. Frontend Next.js build: succeeded (static pages generated).
+- Changes applied to fix CI failures and finalize roadmap items:
+	- `apps/ml-engine/tests/test_rls_policies.py`
+	- `apps/web/src/app/admin/audit/page.tsx`
+	- `apps/web/src/app/admin/models/page.tsx`
+	- `db/init/13-rls-hardening.sql`
+	- `.github/workflows/compose-e2e.yml`
+	- `.env.example`
+	- `docs/JWKS_ML_ENGINE_KEY.md`
+- Branch: `ci/trigger-e2e` contains the verification commits. Recommend merging the branch into `main` to finalize roadmap changes and enable the E2E CI gating for future PRs.
+- Next recommended actions: merge the `ci/trigger-e2e` PR (or request review), then optionally run a post-merge smoke check: run the CI compose-E2E again or run `apps/ml-engine` tests locally against `docker-compose.test-db.yml`.
+
+If you want, I can open or merge the PR now — tell me to (A) open PR, (B) merge PR, or (C) stop here.
+
 Next recommended steps:
 - Validate Supabase RLS & continuous-aggregate policies once `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available.
 - Add a CI `docker-compose` E2E job that mirrors `scripts/run_local_e2e.ps1` for PR gating.

@@ -28,6 +28,7 @@ from dellmology.analysis.runtime_api import router as runtime_router
 from dellmology.intelligence.api import router as xai_router
 from dellmology.api.audit_api import router as audit_router
 from dellmology.api.aggregates_api import router as aggregates_router
+from dellmology.api.maintenance_api import router as maintenance_router
 from broker_flow import main as broker_flow_main
 from exit_whale import main as exit_whale_main
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -369,6 +370,7 @@ app.include_router(runtime_router)
 app.include_router(xai_router)
 app.include_router(audit_router)
 app.include_router(aggregates_router)
+app.include_router(maintenance_router)
 
 
 

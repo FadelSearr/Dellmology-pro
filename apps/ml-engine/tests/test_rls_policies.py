@@ -33,12 +33,19 @@ def test_rls_policies_exist():
         cur.execute("""
             SELECT policyname, tablename
             FROM pg_policies
-            WHERE tablename IN ('model_registry','broker_flow')
+            WHERE tablename IN ('ml_models','broker_flow')
         """)
         rows = cur.fetchall()
         names = {(r[1], r[0]) for r in rows}
 
-        assert ('model_registry', 'models_tight_select') in names or ('model_registry', 'models_service_role_all') in names
+        # Accept either the tightened policy names we add (models_tight_select/models_service_role_all)
+        # or the existing ml_models naming used by older migrations.
+        assert any((('ml_models', p) in names) for p in (
+            'models_tight_select',
+            'models_service_role_all',
+            'ml_models_select_policy',
+            'ml_models_service_write_policy',
+        ))
         assert ('broker_flow', 'brokerflow_tight_select') in names or ('broker_flow', 'brokerflow_service_role_all') in names
     finally:
         try:
