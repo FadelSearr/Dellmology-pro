@@ -33,12 +33,12 @@ def test_rls_policies_exist():
         cur.execute("""
             SELECT policyname, tablename
             FROM pg_policies
-            WHERE tablename IN ('model_registry','broker_flow')
+            WHERE tablename IN ('ml_models','broker_flow')
         """)
         rows = cur.fetchall()
         names = {(r[1], r[0]) for r in rows}
 
-        assert ('model_registry', 'models_tight_select') in names or ('model_registry', 'models_service_role_all') in names
+        assert ('ml_models', 'models_tight_select') in names or ('ml_models', 'models_service_role_all') in names
         assert ('broker_flow', 'brokerflow_tight_select') in names or ('broker_flow', 'brokerflow_service_role_all') in names
     finally:
         try:
