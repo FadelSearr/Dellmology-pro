@@ -21,8 +21,8 @@ BEGIN
         EXECUTE $SQ$
           CREATE POLICY models_tight_select ON public.model_registry
           FOR SELECT USING (
-            current_setting(''dellmology.is_service_role'', true) = ''true'' OR
-            current_setting(''jwt.claims.role'', true) = 'authenticated' OR
+            current_setting('dellmology.is_service_role', true) = 'true' OR
+            current_setting('jwt.claims.role', true) = 'authenticated' OR
             (COALESCE(is_public::boolean, false) = true)
           );
         $SQ$;
@@ -30,8 +30,8 @@ BEGIN
         EXECUTE $SQ$
           CREATE POLICY models_tight_select ON public.model_registry
           FOR SELECT USING (
-            current_setting(''dellmology.is_service_role'', true) = ''true'' OR
-            current_setting(''jwt.claims.role'', true) = 'authenticated'
+            current_setting('dellmology.is_service_role', true) = 'true' OR
+            current_setting('jwt.claims.role', true) = 'authenticated'
           );
         $SQ$;
       END IF;
@@ -55,8 +55,8 @@ BEGIN
         EXECUTE $SQ$
           CREATE POLICY brokerflow_tight_select ON public.broker_flow
           FOR SELECT USING (
-            current_setting(''dellmology.is_service_role'', true) = ''true'' OR
-            current_setting(''jwt.claims.role'', true) = 'authenticated' OR
+            current_setting('dellmology.is_service_role', true) = 'true' OR
+            current_setting('jwt.claims.role', true) = 'authenticated' OR
             (COALESCE(is_public::boolean, false) = true)
           );
         $SQ$;
@@ -64,8 +64,8 @@ BEGIN
         EXECUTE $SQ$
           CREATE POLICY brokerflow_tight_select ON public.broker_flow
           FOR SELECT USING (
-            current_setting(''dellmology.is_service_role'', true) = ''true'' OR
-            current_setting(''jwt.claims.role'', true) = 'authenticated'
+            current_setting('dellmology.is_service_role', true) = 'true' OR
+            current_setting('jwt.claims.role', true) = 'authenticated'
           );
         $SQ$;
       END IF;
