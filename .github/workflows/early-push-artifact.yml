@@ -1,0 +1,25 @@
+name: Early Push Artifact
+
+on:
+  push:
+    branches:
+      - 'release/**'
+      - 'main'
+
+jobs:
+  early-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create immediate artifact
+        run: |
+          echo "early-push-artifact: $(date)" > ci_early_push.txt
+          echo "branch: $GITHUB_REF" >> ci_early_push.txt || true
+
+      - name: Upload immediate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: early_push_artifact
+          path: ci_early_push.txt
