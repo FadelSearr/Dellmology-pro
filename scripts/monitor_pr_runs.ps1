@@ -4,9 +4,21 @@ param(
 )
 
 try {
-    $runsJson = gh run list --pr $PrNumber --limit $Limit --json databaseId,conclusion,workflowName,headBranch,url 2>$null
+    # Determine PR head branch, then list runs for that branch
+    $prInfo = gh pr view $PrNumber --json headRefName 2>$null
+    if (-not $prInfo) {
+        Write-Output "PR #$PrNumber not found or gh CLI failed."
+        exit 0
+    }
+    $headBranch = ($prInfo | ConvertFrom-Json).headRefName
+    if (-not $headBranch) {
+        Write-Output "Could not determine head branch for PR #$PrNumber."
+        exit 0
+    }
+
+    $runsJson = gh run list --branch $headBranch --limit $Limit --json databaseId,conclusion,workflowName,headBranch,url 2>$null
     if (-not $runsJson) {
-        Write-Output "No runs found for PR #$PrNumber."
+        Write-Output "No runs found for PR #$PrNumber (branch $headBranch)."
         exit 0
     }
 
