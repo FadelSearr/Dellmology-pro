@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Jupyter notebooks
+.ipynb_checkcheckpoints
+
+# Environment
+.env
+/venv/
+/env/
+
+# Trained models (if saved here)
+*.h5
+*.pth
+*.pkl
+
+# Data files
+*.csv
+*.json
+*.db

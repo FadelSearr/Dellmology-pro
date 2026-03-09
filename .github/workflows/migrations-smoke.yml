@@ -223,11 +223,9 @@ PY
           fi
 
       - name: Upload smoke insert log
-        run: |
-          echo "smoke_insert.log listing:" && ls -la smoke_insert.log || true
         uses: actions/upload-artifact@v4
         with:
-          name: smoke_insert.log
+          name: smoke_insert
           path: smoke_insert.log
 
       - name: Tear down

@@ -1,0 +1,57 @@
+# IDE and OS files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Node
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-wheel-metadata/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Project Specific
+references/
+GEMINI.md
+stockbit-extension/
+c/IDX_Analyst/apps/web/node_modules/
+c/IDX_Analyst/apps/web/.next/
+c:/IDX_Analyst/apps/web/node_modules/
+c:/IDX_Analyst/apps/web/.next/
+
+.env.example
+.env
+.env.dum

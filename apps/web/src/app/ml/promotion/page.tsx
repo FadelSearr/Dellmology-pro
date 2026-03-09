@@ -19,10 +19,13 @@ export default function PromotionPage(){
 			const res = await fetch('/api/ml/status')
 			const j = await res.json()
 			setStatus(j)
-		}catch(e){ setMessage('Failed to fetch status') }
+	    	}catch{ setMessage('Failed to fetch status') }
 	}
 
-	useEffect(()=>{ fetchStatus() }, [])
+	useEffect(()=>{
+		async function load(){ await fetchStatus() }
+		load()
+	}, [])
 
 	async function runBacktest(){
 		if(!status?.challenger) return
@@ -32,7 +35,7 @@ export default function PromotionPage(){
 			const res = await fetch('/api/ml/backtest', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({model_name: status.challenger})})
 			const j = await res.json()
 			setMessage('Backtest finished: ' + JSON.stringify(j.backtest || j))
-		}catch(e){ setMessage('Backtest failed') }
+	    	}catch{ setMessage('Backtest failed') }
 		setLoading(false)
 		fetchStatus()
 	}
@@ -45,7 +48,7 @@ export default function PromotionPage(){
 			const res = await fetch('/api/ml/promote', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({require_backtest: false})})
 			const j = await res.json()
 			setMessage('Promote result: ' + JSON.stringify(j))
-		}catch(e){ setMessage('Promote failed') }
+	    	}catch{ setMessage('Promote failed') }
 		setLoading(false)
 		fetchStatus()
 	}
@@ -58,7 +61,7 @@ export default function PromotionPage(){
 			const res = await fetch('/api/ml/apply_checkpoint', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({name})})
 			const j = await res.json()
 			setMessage('Apply checkpoint: ' + JSON.stringify(j))
-		}catch(e){ setMessage('Apply failed') }
+	    	}catch{ setMessage('Apply failed') }
 		setLoading(false)
 		fetchStatus()
 	}

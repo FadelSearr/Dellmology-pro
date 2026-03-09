@@ -123,15 +123,18 @@ Local verification (2026-03-08, continued):
 Recommendations: merge verification branch (`ci/trigger-e2e`) into `main` when ready, then run an automated compose-E2E CI run or repeat local `docker-compose.test-db.yml` + `scripts/run_migrations.py` to validate Supabase/Timescale-specific artifacts in a fully provisioned environment.
 
 Recent addition (evaluation persistence):
-- **Persist evaluations:** Scheduled evaluations now persist results to `public.ml_model_evaluations` (best-effort; table optional) when available.
-- **UPS event:** Each evaluation writes a UPS event to `apps/ml-engine/logs/ups_events.jsonl` so downstream notifiers (UPS/Telegram) can pick up evaluation outcomes.
  
 Release & CI updates (2026-03-08):
-- Created release PR branch `release/v2.0.0` with `RELEASE_PR.md` summarizing v2.0.0 changes.
-- Draft GitHub Release created from tag `v2.0.0` (review link printed in CI logs).
-- Added Telegram notifier and test scripts (`apps/ml-engine/scripts/send_telegram_test.py`, `apps/ml-engine/scripts/test_evaluate_notify.py`).
-- Added GitHub Actions workflows for on-demand tests:
 	- `.github/workflows/telegram-e2e.yml` — manual Telegram test (requires `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` secrets).
 	- `.github/workflows/evaluate-promote-e2e.yml` — manual evaluate/promote E2E against `ML_ENGINE_URL` (requires `ML_ENGINE_KEY` or `ADMIN_TOKEN`).
 
 These additions enable safe, manual verification of notification paths and evaluate/promote orchestration in CI while keeping production secrets out of the repository.
+
+---
+Escalation & CI Artifact Triage (2026-03-09):
+- Downloaded GitHub Actions artifacts and logs for failing runs (22830664838, 22830664766, etc.) using `scripts/download_artifacts.py`.
+- Packaged local notifier logs with `scripts/package_notifier_logs.py`.
+- Bundled all diagnostics and artifacts into `runs/diagnostics_bundle.zip` via `scripts/bundle_diagnostics.py`.
+- Prepared SUPPORT_ESCALATION.md with summary, impact, steps taken, and request for investigation.
+- Created GitHub Support issue using `scripts/create_support_issue.sh` and attached diagnostics bundle.
+- Awaiting GitHub Support response for missing Actions job logs.

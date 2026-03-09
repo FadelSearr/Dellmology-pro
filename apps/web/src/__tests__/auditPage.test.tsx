@@ -1,16 +1,16 @@
 import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import AuditPage from '@/app/admin/audit/page'
 
 describe('AuditPage', () => {
   beforeEach(() => {
     // reset fetch mock
-    // @ts-ignore
+    // @ts-expect-error lint: test expects error
     global.fetch = jest.fn()
   })
 
   afterEach(() => {
-    // @ts-ignore
+    // @ts-expect-error lint: test expects error
     global.fetch.mockReset()
   })
 

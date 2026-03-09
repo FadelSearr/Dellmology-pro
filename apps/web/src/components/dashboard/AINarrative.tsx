@@ -9,6 +9,7 @@ const AINarrative: React.FC = () => {
     if (!events || events.length === 0) return null
     for (const ev of events) {
       if (!ev) continue
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const e = ev as any
       // broker analysis payloads typically include `brokers` or `stats`
       if (e.brokers || e.stats) return e

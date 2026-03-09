@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react'
 
 export default function ModelManagerPage() {
-  const [status, setStatus] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState<Record<string, unknown> | null>(null)
+  const [loading, setLoading] = useState<boolean>(false)
   const [message, setMessage] = useState<string | null>(null)
 
   async function loadStatus() {
@@ -13,7 +13,7 @@ export default function ModelManagerPage() {
       const res = await fetch('/api/models/status')
       const json = await res.json()
       setStatus(json)
-    } catch (err) {
+    } catch {
       setMessage('Failed to load status')
     } finally {
       setLoading(false)
@@ -31,7 +31,7 @@ export default function ModelManagerPage() {
       setMessage(json?.message || JSON.stringify(json))
       // refresh status
       await loadStatus()
-    } catch (err) {
+    } catch {
       setMessage('Retrain failed')
     } finally { setLoading(false) }
   }
@@ -40,7 +40,7 @@ export default function ModelManagerPage() {
     setMessage(null)
     setLoading(true)
     try {
-      const payload: any = {}
+      const payload: Record<string, unknown> = {}
       // include backtest options if requested
       if (requireBacktest) {
         payload.require_backtest = true
@@ -52,7 +52,7 @@ export default function ModelManagerPage() {
       setMessage(json?.message || JSON.stringify(json))
       if (json?.metrics) setBacktestResult(json.metrics)
       await loadStatus()
-    } catch (err) {
+    } catch {
       setMessage('Promote failed')
     } finally { setLoading(false) }
   }
@@ -60,7 +60,7 @@ export default function ModelManagerPage() {
   const [requireBacktest, setRequireBacktest] = useState(false)
   const [startDate, setStartDate] = useState<string | null>(null)
   const [endDate, setEndDate] = useState<string | null>(null)
-  const [backtestResult, setBacktestResult] = useState<any>(null)
+  const [backtestResult, setBacktestResult] = useState<unknown | null>(null)
 
   return (
     <div style={{ padding: 16 }}>

@@ -1125,7 +1125,47 @@ func startHTTPServer() {
 	mux := http.NewServeMux()
 
 	// Endpoint: /market/commodities
-	mux.HandleFunc("/market/commodities", func(w http.ResponseWriter, r *http.Request) {
+	// --- Rate-Limit Middleware ---
+	type rateLimiter struct {
+		mu sync.Mutex
+		requests map[string][]time.Time // IP -> slice of request times
+		limit int
+		window time.Duration
+	}
+	rl := &rateLimiter{
+		requests: make(map[string][]time.Time),
+		limit: 60,
+		window: time.Minute,
+	}
+	rateLimitMiddleware := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			ip := r.RemoteAddr
+			if idx := strings.LastIndex(ip, ":"); idx != -1 {
+				ip = ip[:idx]
+			}
+			rl.mu.Lock()
+			now := time.Now()
+			times := rl.requests[ip]
+			var filtered []time.Time
+			for _, t := range times {
+				if now.Sub(t) < rl.window {
+					filtered = append(filtered, t)
+				}
+			}
+			if len(filtered) >= rl.limit {
+				rl.mu.Unlock()
+				w.Header().Set("Retry-After", "60")
+				http.Error(w, "Rate limit exceeded. Try again in 1 minute.", http.StatusTooManyRequests)
+				return
+			}
+			filtered = append(filtered, now)
+			rl.requests[ip] = filtered
+			rl.mu.Unlock()
+			next(w, r)
+		}
+	}
+
+	mux.HandleFunc("/market/commodities", rateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*"); w.Header().Set("Content-Type", "application/json");
 		// Dummy data, replace with real API integration (e.g. yfinance, RSS, etc)
 		resp := map[string]interface{}{
@@ -1138,9 +1178,9 @@ func startHTTPServer() {
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	})
+	}))
 	mux.Handle("/stream", sseBroker)
-	mux.HandleFunc("/broker/whale-clusters", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/broker/whale-clusters", rateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
 		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
@@ -1172,10 +1212,10 @@ func startHTTPServer() {
 		if err := json.NewEncoder(w).Encode(payload); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	})
+	}))
 
 	// REST Endpoint: /api/broker/stats?symbol=BBCA&days=7
-	mux.HandleFunc("/api/broker/stats", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/broker/stats", rateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
 		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
@@ -1192,10 +1232,10 @@ func startHTTPServer() {
 		if err := json.NewEncoder(w).Encode(payload); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	})
+	}))
 
 	// REST Endpoint: /api/broker/zscore?symbol=BBCA&days=7
-	mux.HandleFunc("/api/broker/zscore", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/broker/zscore", rateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
 		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
@@ -1218,7 +1258,7 @@ func startHTTPServer() {
 		if err := json.NewEncoder(w).Encode(map[string]interface{}{"symbol": symbol, "days": days, "rows": rows}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	})
+	}))
 
 	// Debug endpoint: trigger AnalyzeBrokerFlow now, attach ML inference if available,
 	// broadcast result to SSE clients and return combined payload immediately.

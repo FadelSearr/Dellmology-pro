@@ -41,6 +41,26 @@ Developer UX / communication
 - Keep messages concise and action-oriented. When a task is complete, list changed files and the next recommended step.
 - If a change might affect runtime or deployment, recommend verifying with the appropriate local command and/or CI job.
 
+
+Architecture boundaries & conventions
+- Monorepo layout: `apps/web` (Next.js frontend), `apps/ml-engine` (Python ML engine), `apps/broker-importer` (Go broker importer), `apps/streamer` (Go streaming core).
+- Database: PostgreSQL (TimescaleDB), Redis for caching.
+- Communication: API endpoints, environment variables.
+- Monitoring: Telegram, dashboard, email alerts.
+
+Unique conventions
+- Minimal patch, avoid wide refactors.
+- Commit prefix: feat/, fix/, chore/, docs/, ci/.
+- All features must follow `ROADMAP.md`.
+- Use `manage_todo_list` for multi-step agent tasks.
+- SQL migration in `db/init/` with consistent numbering.
+
+Common pitfalls
+- Incorrect environment variable setup (e.g., SESSION_TOKEN_AES_KEY, DATABASE_URL).
+- Heavy dependencies (TensorFlow, native libs) require prior agreement.
+- Never commit secrets or undocumented env vars.
+- Runtime/deployment changes must be verified with local command or CI.
+
 Edge cases and anti-patterns
 - Do not implement features not listed in `ROADMAP.md` unless explicitly instructed.
 - Avoid adding heavyweight dependencies (tensorflow, large native libs) to CI without prior agreement.
@@ -49,7 +69,7 @@ Where to look first
 - `ROADMAP.md`, `README.md`, `apps/web/src`, `apps/ml-engine`, `apps/streamer`, `db/init`.
 
 If you need clarification
-- Ask one concise question with up to 1 options when decisions are required.
+- Ask one concise question with up to 3 options when decisions are required.
 
 ---
 This instruction file is a lightweight bootstrap to make Copilot-style agents productive in this workspace. Update sparingly and keep preferences aligned with the project's roadmap and security rules.

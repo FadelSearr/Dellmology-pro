@@ -65,7 +65,8 @@ export const AINarrativeDisplay = ({
           }
           requestPayload.data = {
             whales: Array.isArray(brokerData.brokers)
-              ? brokerData.brokers.filter(isBroker).filter((b: any) => Boolean((b as any).is_whale)).slice(0, 3)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                ? brokerData.brokers.filter(isBroker).filter((b: any) => Boolean((b as any).is_whale)).slice(0, 3)
               : [],
             wash_sale_score: brokerData.stats.wash_sale_score || 0,
             consistency: brokerData.stats.total_brokers > 0 ? 1 : 0,
@@ -87,7 +88,8 @@ export const AINarrativeDisplay = ({
 
           const washSaleScore = Number(brokerData?.stats?.wash_sale_score || 0);
           const whaleCount = Array.isArray(brokerData?.brokers)
-            ? brokerData.brokers.filter((b: any) => isBroker(b) && Boolean((b as any).is_whale)).length
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              ? brokerData.brokers.filter((b: any) => isBroker(b) && Boolean((b as any).is_whale)).length
             : 0;
           const upsScore = Number(marketData?.unified_power_score?.score || 0);
           const regime = String(regimeData?.regime || 'UNKNOWN');
@@ -136,6 +138,7 @@ export const AINarrativeDisplay = ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestPayload),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         }).catch(() => null as any);
 
         if (!response || !response.ok) {
@@ -156,7 +159,7 @@ export const AINarrativeDisplay = ({
         const resJson = await response.json();
 
         // Map backend shape to local `AInarrative` shape.
-        const mapped: any = {
+        const mapped: AInarrative = {
           type,
           symbol,
           narrative: resJson.primary || resJson.narrative || '',

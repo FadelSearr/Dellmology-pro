@@ -1,0 +1,81 @@
+services:
+  # Main Database with TimescaleDB extension
+  db:
+    image: timescale/timescaledb:latest-pg15
+    restart: always
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=dellmology
+      # shared_preload_libraries is already configured by the timescaledb image;
+      # initdb doesn’t accept the "-c" option, so the following line caused
+      # "initdb: unrecognized option: c" errors. Removing it fixes container start.
+      # - POSTGRES_INITDB_ARGS="-c shared_preload_libraries=timescaledb"
+    ports:
+      - '5433:5432'
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d dellmology"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dellmology-network
+
+  # Optional: Redis for caching (future use)
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dellmology-network
+
+  # ML Engine with Telegram Notification Service
+  ml-engine:
+    build:
+      context: ./apps/ml-engine
+      dockerfile: Dockerfile.telegram
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://admin:password@db:5432/dellmology
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - ML_ENGINE_KEY=${ML_ENGINE_KEY:-development_key_change_in_production}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - LOG_LEVEL=INFO
+      - API_PORT=8001          # ensure server listens on healthcheck port
+    ports:
+      - '8001:8001'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/ml-engine:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dellmology-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  dellmology-network:
+    driver: bridge
+

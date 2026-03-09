@@ -62,7 +62,7 @@ export const OrderFlowHeatmap = ({ symbol = 'BBCA' }: { symbol: string }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [aggregate, setAggregate] = useState(false);
-  const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
+  const [, setSelectedPrice] = useState<number | null>(null);
   
 
   useEffect(() => {

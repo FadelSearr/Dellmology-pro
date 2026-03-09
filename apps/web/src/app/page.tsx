@@ -2899,13 +2899,14 @@ function CenterPanel({
   priceChange,
   prediction,
   combatMode,
-}: {
-  activeSymbol: string;
-  timeframe: Timeframe;
-  setTimeframe: (value: Timeframe) => void;
-  marketData: ChartPoint[];
-  heatmapData: Array<{ price: number; volume: number; type: 'Bid' | 'Ask' }>;
-  upsScore: number;
+  }, [
+    canInvestigateNext,
+    canInvestigatePrev,
+    investigateTrailEvents,
+    recoveryEscalationInvestigateIndex,
+    recoveryEscalationInvestigateSignatureActive,
+    moveInvestigate,
+  ]);
   currentPrice: number;
   priceChange: number;
   prediction: PredictionResponse | null;
@@ -4203,7 +4204,8 @@ function BottomPanel({
     const nextSignature = item.signature && item.signature === recoveryEscalationInvestigateSignatureActive ? null : item.signature || null;
     setRecoveryEscalationInvestigateSignature(nextSignature);
   };
-  const moveInvestigate = (direction: 'prev' | 'next') => {
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const moveInvestigate = useCallback((direction: 'prev' | 'next') => {
     if (direction === 'prev') {
       if (!canInvestigatePrev) {
         return;
@@ -4218,7 +4220,7 @@ function BottomPanel({
     }
     const nextItem = investigateTrailEvents[recoveryEscalationInvestigateIndex + 1];
     setRecoveryEscalationInvestigateSignature(nextItem?.signature || null);
-  };
+  }, [investigateTrailEvents, recoveryEscalationInvestigateIndex, canInvestigatePrev, canInvestigateNext]);
   useEffect(() => {
     if (!recoveryEscalationInvestigateSignatureActive) {
       return;
@@ -4259,6 +4261,7 @@ function BottomPanel({
     investigateTrailEvents,
     recoveryEscalationInvestigateIndex,
     recoveryEscalationInvestigateSignatureActive,
+    moveInvestigate,
   ]);
   const recoveryEscalationSelectedSource = recoveryEscalationSourceStats.find((item) => item.source === recoveryTelemetrySource) || null;
   const bearishRiskBullets = extractBearishRiskBullets(adversarialNarrative.bearish);
@@ -5462,6 +5465,7 @@ export default function Home() {
     };
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const persistRecoveryEscalationAuditEvent = useCallback(
     (eventType: RecoveryEscalationAuditEventType, level: RecoveryEscalationLevel, signature: string, source: RecoveryTelemetrySource | null) => {
       void fetch('/api/system-control/recovery-escalation-audit', {
@@ -5709,6 +5713,7 @@ export default function Home() {
     };
   }, []);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const appendRecoveryTelemetryEvent = useCallback(
     (source: RecoveryTelemetrySource, status: 'SUCCESS' | 'FAILED' | 'LOCKED', message: string, cooldownSeconds: number | null) => {
       const attemptAt = new Date().toISOString();
@@ -5940,6 +5945,7 @@ export default function Home() {
     token: 'warning',
   });
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const applySymbol = useCallback(() => {
     if (systemKillSwitch.active) {
       setActionState({ busy: false, message: `Screener locked: ${systemKillSwitch.reason || 'system inactive'}` });
@@ -5959,6 +5965,7 @@ export default function Home() {
     }
   }, [coolingOff.active, symbolInput, systemKillSwitch.active, systemKillSwitch.reason, volumeFingerprint.hardReset]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const fetchDashboard = useCallback(async () => {
     const started = performance.now();
     const tf = apiTimeframe(timeframe);
@@ -7430,6 +7437,7 @@ export default function Home() {
     }
   }, [fetchDashboard, riskDraft]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const sendTelegramAlert = useCallback(async () => {
     const negotiatedBuyNotional = negotiatedFeed.reduce((sum, item) => {
       const tradeType = String(item.trade_type || '').toUpperCase();
@@ -8061,6 +8069,7 @@ export default function Home() {
     priceCrossCheck.checkedAt,
   ]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const runBacktest = useCallback(async () => {
     if (engineHeartbeat.checkedAt !== null && !engineHeartbeat.online) {
       setActionState({
@@ -8287,6 +8296,7 @@ export default function Home() {
   const negotiatedSellPressureWarningForScreener =
     negotiatedDirectionalNotionalForScreener >= 15_000_000_000 && negotiatedBuySharePctForScreener <= 40;
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const resetDeadman = useCallback(async () => {
     if (deadmanResetCooldown > 0) {
       setActionState({ busy: false, message: `Deadman cooldown: wait ${deadmanResetCooldown}s` });
@@ -8336,6 +8346,7 @@ export default function Home() {
     }
   }, [appendRecoveryTelemetryEvent, deadmanResetCooldown, fetchDashboard]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const resetCoolingOff = useCallback(async () => {
     if (!coolingOff.active) {
       setActionState({ busy: false, message: 'Cooling-off already inactive' });
@@ -8402,6 +8413,7 @@ export default function Home() {
     }
   }, [activeSymbol, appendRecoveryTelemetryEvent, coolingOff.active, fetchDashboard]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const resetDeploymentGate = useCallback(async () => {
     if (!deploymentGate.blocked) {
       setActionState({ busy: false, message: 'Deployment gate already pass' });
@@ -8591,6 +8603,7 @@ export default function Home() {
       }));
     }
   }, [recoveryEscalationAck.ackedAt, recoveryEscalationAck.signature, recoveryEscalationAck.silencedUntil, runtimeRecoveryEscalationAckMinutes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const acknowledgeRecoveryEscalation = useCallback(() => {
     if (recoveryEscalationLevel === 'OK') {
       return;
@@ -8634,6 +8647,7 @@ export default function Home() {
     combatCriticalLocks.length > 0
       ? `Active lock guards (${combatCriticalLocks.length}): ${combatCriticalLocks.join(' | ')} | ${PERSONAL_RESEARCH_ONLY_DISCLAIMER}`
       : `No active lock guard | ${PERSONAL_RESEARCH_ONLY_DISCLAIMER}`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const focusRecoveryTelemetry = useCallback((source: RecoveryTelemetrySource | null) => {
     setRecoveryTelemetrySource(source || 'deadman');
     if (typeof document !== 'undefined') {

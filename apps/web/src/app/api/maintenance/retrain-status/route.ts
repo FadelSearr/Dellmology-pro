@@ -6,7 +6,8 @@ export async function GET(){
     const res = await fetch(url)
     const data = await res.json().catch(() => null)
     return NextResponse.json(data, { status: res.status })
-  } catch (err: any) {
-    return NextResponse.json({ error: 'Failed to fetch retrain status', message: String(err?.message || err) }, { status: 502 })
+  } catch (err: unknown) {
+    const msg = typeof err === 'object' && err !== null && 'message' in err ? String((err as Record<string, unknown>).message) : String(err)
+    return NextResponse.json({ error: 'Failed to fetch retrain status', message: msg }, { status: 502 })
   }
 }

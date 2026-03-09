@@ -140,6 +140,7 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
               is_whale: Boolean(r.is_whale ?? (String(r.type ?? '').toLowerCase() === 'whale')),
               is_retail: Boolean(r.is_retail ?? false),
               daily_heatmap: Array.isArray(r.daily_heatmap) ? (r.daily_heatmap as unknown[]).map((n) => Number(n ?? 0)) : undefined,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             } as any;
           })}
           filterType={filterType}

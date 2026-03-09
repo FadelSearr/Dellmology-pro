@@ -1,17 +1,17 @@
 "use client"
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 
 type Row = { symbol: string; score: number; z_score: number; volume: number; last_price: number }
 
 export default function ScreenerPage(){
   const [rows, setRows] = useState<Row[]>([])
   const [mode, setMode] = useState<'swing'|'daytrade'|'custom'>('swing')
-  const [minPrice, setMinPrice] = useState<number | ''>('')
-  const [maxPrice, setMaxPrice] = useState<number | ''>('')
+  const [minPrice, setMinPrice] = useState<number | string>('')
+  const [maxPrice, setMaxPrice] = useState<number | string>('')
   const [loading, setLoading] = useState(false)
 
-  const fetchRows = async () => {
+  const fetchRows = useCallback(async () => {
     setLoading(true)
     try{
       let url = `/api/market/screener?mode=${mode}&limit=25`
@@ -22,13 +22,16 @@ export default function ScreenerPage(){
       const res = await fetch(url)
       const j = await res.json()
       setRows(j.results || [])
-    }catch(e){
+    }catch{
       // ignore
     }
     setLoading(false)
-  }
+  }, [mode, minPrice, maxPrice])
 
-  useEffect(()=>{ fetchRows() }, [mode])
+  useEffect(()=>{ 
+    async function load(){ await fetchRows() }
+    load()
+  }, [fetchRows])
 
   return (
     <div className="p-6 max-w-5xl">
@@ -42,9 +45,9 @@ export default function ScreenerPage(){
       {mode === 'custom' && (
         <div className="mb-4 flex items-center gap-3">
           <label className="text-sm text-gray-300">Price range (Rp)</label>
-          <input type="number" value={minPrice as any} onChange={e=>setMinPrice(e.target.value === '' ? '' : Number(e.target.value))} placeholder="min" className="bg-gray-800 text-gray-200 px-2 py-1 rounded w-28" />
+          <input type="number" value={minPrice} onChange={e=>setMinPrice(e.target.value === '' ? '' : Number(e.target.value))} placeholder="min" className="bg-gray-800 text-gray-200 px-2 py-1 rounded w-28" />
           <span className="text-gray-400">—</span>
-          <input type="number" value={maxPrice as any} onChange={e=>setMaxPrice(e.target.value === '' ? '' : Number(e.target.value))} placeholder="max" className="bg-gray-800 text-gray-200 px-2 py-1 rounded w-28" />
+          <input type="number" value={maxPrice} onChange={e=>setMaxPrice(e.target.value === '' ? '' : Number(e.target.value))} placeholder="max" className="bg-gray-800 text-gray-200 px-2 py-1 rounded w-28" />
           <button onClick={fetchRows} className="ml-3 px-3 py-1 bg-cyan-600 rounded text-white">Apply</button>
         </div>
       )}

@@ -9,7 +9,8 @@ from uvicorn import Config, Server
 
 # Import app lazily to pick up current working directory
 sys.path.insert(0, os.path.abspath('apps/ml-engine'))
-from main import app
+import main
+app = main.app
 
 SERVER_HOST = '127.0.0.1'
 SERVER_PORT = 8002

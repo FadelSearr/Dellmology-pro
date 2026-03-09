@@ -147,6 +147,7 @@ export const Section4_RiskDock: React.FC<Section4Props> = ({
               symbol: String(t.symbol ?? ''),
               price: Number(t.price ?? 0),
               volume: Number(t.volume ?? 0),
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               trade_type: (String((t as any).trade_type ?? (t as any).type ?? '') as 'HAKA' | 'HAKI' | 'NORMAL') || 'NORMAL',
               timestamp: typeof t.time === 'number' ? new Date(t.time).toISOString() : String(t.time ?? new Date().toISOString()),
             }))}

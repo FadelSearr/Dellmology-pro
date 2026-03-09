@@ -2,9 +2,11 @@
 
 import { useState } from 'react'
 
+type StatusObj = Record<string, unknown> | null
+
 export default function AdminModelsPage() {
-  const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState<any>(null)
+  const [loading, setLoading] = useState<boolean>(false)
+  const [status, setStatus] = useState<StatusObj>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function loadStatus() {
@@ -14,9 +16,12 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/ml/status')
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus(json)
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load')
+      setStatus(typeof json === 'object' && json !== null ? (json as Record<string, unknown>) : null)
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed to load'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -29,9 +34,12 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/ml/retrain', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ epochs: 5 }) })
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus((prev: any) => ({...prev, retrain: json}))
-    } catch (err: any) {
-      setError(err?.message || 'Failed')
+      setStatus((prev) => ({...((prev && typeof prev === 'object') ? prev as Record<string, unknown> : {}), retrain: json}))
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -44,9 +52,12 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/ml/promote', { method: 'POST' , headers: {'Content-Type':'application/json'}, body: JSON.stringify({ require_backtest: true }) })
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus((prev: any) => ({...prev, promote: json}))
-    } catch (err: any) {
-      setError(err?.message || 'Failed')
+      setStatus((prev) => ({...((prev && typeof prev === 'object') ? prev as Record<string, unknown> : {}), promote: json}))
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -59,9 +70,12 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/ml/backtest', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ model_name: status?.challenger }) })
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus((prev: any) => ({...prev, backtest: json.backtest || json}))
-    } catch (err: any) {
-      setError(err?.message || 'Failed')
+      setStatus((prev) => ({...((prev && typeof prev === 'object') ? prev as Record<string, unknown> : {}), backtest: (json && typeof json === 'object' && 'backtest' in json) ? (json as Record<string, unknown>).backtest : json}))
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -74,9 +88,12 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/ml/checkpoints')
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus((prev: any) => ({...prev, checkpoints: json.checkpoints || []}))
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load')
+      setStatus((prev) => ({...((prev && typeof prev === 'object') ? prev as Record<string, unknown> : {}), checkpoints: (json && typeof json === 'object' && 'checkpoints' in json) ? (json as Record<string, unknown>).checkpoints : []}))
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed to load'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -89,9 +106,12 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/ml/apply_checkpoint', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) })
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus((prev: any) => ({...prev, apply_checkpoint: json}))
-    } catch (err: any) {
-      setError(err?.message || 'Failed')
+      setStatus((prev) => ({...((prev && typeof prev === 'object') ? prev as Record<string, unknown> : {}), apply_checkpoint: json}))
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -104,9 +124,12 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/maintenance/retrain-status')
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus((prev: any) => ({...prev, retrain_status: json}))
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load retrain status')
+      setStatus((prev) => ({...((prev && typeof prev === 'object') ? prev as Record<string, unknown> : {}), retrain_status: json}))
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed to load retrain status'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -122,9 +145,12 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/maintenance/retrain-schedule', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ cron, epochs }) })
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus((prev: any) => ({...prev, retrain_update: json}))
-    } catch (err: any) {
-      setError(err?.message || 'Failed to update')
+      setStatus((prev) => ({...((prev && typeof prev === 'object') ? prev as Record<string, unknown> : {}), retrain_update: json}))
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed to update'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -149,8 +175,8 @@ export default function AdminModelsPage() {
             <div style={{ marginTop: 8 }}>
               <h4>Checkpoints</h4>
               <ul>
-                {status.checkpoints.map((c: any) => (
-                  <li key={c}>{c} <button onClick={() => applyCheckpoint(c)} disabled={loading} style={{ marginLeft: 8 }}>Apply</button></li>
+                {status.checkpoints.map((c: unknown) => (
+                  <li key={String(c)}>{String(c)} <button onClick={() => applyCheckpoint(String(c))} disabled={loading} style={{ marginLeft: 8 }}>Apply</button></li>
                 ))}
               </ul>
             </div>

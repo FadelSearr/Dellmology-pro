@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react'
 
 export default function MetricsPage() {
-  const [metrics, setMetrics] = useState<any | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [metrics, setMetrics] = useState<Record<string, unknown> | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
 
   useEffect(() => {
     let mounted = true
@@ -12,7 +12,7 @@ export default function MetricsPage() {
       .then((r) => r.json())
       .then((j) => {
         if (!mounted) return
-        setMetrics(j.latest)
+        setMetrics(j.latest ?? j)
       })
       .catch(() => setMetrics(null))
       .finally(() => setLoading(false))
@@ -22,7 +22,7 @@ export default function MetricsPage() {
   if (loading) return <div className="p-4 text-sm text-gray-300">Loading metrics…</div>
   if (!metrics) return <div className="p-4 text-sm text-gray-400">No metrics available</div>
 
-  const m = metrics.metrics ?? metrics
+  const m = (metrics && typeof metrics === 'object' && 'metrics' in metrics) ? (metrics as Record<string, unknown>).metrics : metrics
 
   return (
     <div className="p-4 space-y-3">

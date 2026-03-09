@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 export default function Heatmap1minPage() {
   const [loading, setLoading] = useState(false)
-  const [buckets, setBuckets] = useState<any[]>([])
+  const [buckets, setBuckets] = useState<Record<string, unknown>[]>([])
   const [error, setError] = useState<string | null>(null)
 
   async function load() {
@@ -14,9 +14,10 @@ export default function Heatmap1minPage() {
       const res = await fetch('/api/aggregates/order_flow/heatmap/1min')
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setBuckets(json.buckets || [])
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load')
+      setBuckets((json && typeof json === 'object' && 'buckets' in json && Array.isArray((json as Record<string, unknown>).buckets)) ? (json as Record<string, unknown>).buckets as Record<string, unknown>[] : [])
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err ? String((err as Record<string, unknown>).message) : String(err)
+      setError(msg || 'Failed to load')
     } finally {
       setLoading(false)
     }
@@ -46,15 +47,15 @@ export default function Heatmap1minPage() {
               </tr>
             </thead>
             <tbody>
-              {buckets.map((b: any, i: number) => (
+              {buckets.map((b: Record<string, unknown>, i: number) => (
                 <tr key={i}>
-                  <td>{b.bucket}</td>
-                  <td>{b.symbol}</td>
-                  <td>{b.avg_bid_vol}</td>
-                  <td>{b.avg_ask_vol}</td>
-                  <td>{b.avg_net_vol}</td>
-                  <td>{b.avg_ratio}</td>
-                  <td>{b.avg_intensity}</td>
+                  <td>{String(b.bucket ?? '')}</td>
+                  <td>{String(b.symbol ?? '')}</td>
+                  <td>{String(b.avg_bid_vol ?? '')}</td>
+                  <td>{String(b.avg_ask_vol ?? '')}</td>
+                  <td>{String(b.avg_net_vol ?? '')}</td>
+                  <td>{String(b.avg_ratio ?? '')}</td>
+                  <td>{String(b.avg_intensity ?? '')}</td>
                 </tr>
               ))}
             </tbody>
