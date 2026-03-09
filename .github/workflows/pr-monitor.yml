@@ -41,8 +41,12 @@ jobs:
       - name: Package pr-logs (if any)
         run: |
           if [ -d pr-logs ]; then
-            tar -czf pr-logs.tar.gz pr-logs
-            echo "Packaged pr-logs.tar.gz"
+            ts=$(date -u +"%Y%m%d-%H%M%SZ")
+            out="pr-logs-${ts}.tar.gz"
+            tar -czf "$out" pr-logs
+            echo "Packaged $out"
+            ls -lah "$out"
+            tar -tzf "$out" | head -n 200 || true
           else
             echo "No pr-logs directory present"
           fi
@@ -52,4 +56,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr-logs-${{ github.run_id }}
-          path: pr-logs.tar.gz
+          path: |
+            pr-logs-*.tar.gz
+            pr-logs
