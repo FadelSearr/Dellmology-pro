@@ -15,7 +15,15 @@ while ($true) {
             $checks = gh pr checks $PrNumber --repo FadelSearr/Dellmology-pro 2>$null
             if ($checks -match "0 failing, 0 pending") {
                 Write-Output "All checks passed — merging PR #$PrNumber"
-                gh pr merge $PrNumber --repo FadelSearr/Dellmology-pro --merge --delete-branch --confirm
+                $mergeResult = gh pr merge $PrNumber --repo FadelSearr/Dellmology-pro --merge --delete-branch --confirm 2>$null
+                Write-Output $mergeResult
+                # notify via Telegram if configured
+                try {
+                    $msg = "PR #$PrNumber merged: https://github.com/FadelSearr/Dellmology-pro/pull/$PrNumber"
+                    & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/send_telegram.ps1 -Message $msg
+                } catch {
+                    Write-Error "Telegram notify failed: $_"
+                }
                 break
             }
         } catch {
