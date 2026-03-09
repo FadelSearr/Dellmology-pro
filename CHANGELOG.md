@@ -1,3 +1,22 @@
+# Changelog
+
+## Unreleased (2026-03-09)
+
+### Added
+- Telegram UPS-based notifier with UPS tailing and mock E2E harness.
+- `TelegramService` unit test and `notifier_e2e.py` (mock server).
+- `apps/ml-engine/NOTIFIER_RUN.md` — run & debug guide for notifier locally and CI.
+
+### Changed
+- Hardened DB migrations runner (`apps/ml-engine/scripts/run_migrations.py`) to handle TimescaleDB and Supabase-specific migrations more gracefully.
+- CI: `migrations-smoke` and `notifier-e2e` workflows updated with diagnostics, artifact uploads, scheduled runs, and push triggers for `release/**` and `ci/**`.
+- Notifier debug logging to `apps/ml-engine/logs/notifier_debug.log` for E2E troubleshooting.
+
+### Fixed
+- Scheduler start/stop race conditions and added scheduler tests.
+
+### Notes
+- See `RELEASE_DRAFT.md` for the full release draft and review checklist.
 # 📝 Implementation Changelog - Phase 1+
 
 ## Session: [March 1, 2026 - Phase 5 Enhancements]
@@ -62,6 +81,19 @@ GET /model-alerts/thresholds?symbol=BBCA
 **Backend**: Added endpoints to `apps/ml-engine/telegram_service.py` with DB upsert logic
 
 ---
+
+## Release v2.0.0 (2026-03-08)
+
+Summary:
+- Verified and merged roadmap changes including RLS hardening, audit logging, retrain scheduler, and admin model controls.
+- Added maintenance APIs: RLS smoke checks, Timescale continuous-aggregate refresh, retrain-status/schedule, evaluate-promote, and retrain evaluation scheduling.
+- Hardened admin auth paths: bearer token, `x-admin-token`, HS256 JWT support, and JWKS/RS256 validation.
+- Admin UI additions: audit viewer with verify/clear, evaluate & promote controls, and frontend proxy routes for maintenance endpoints.
+- CI & local verification: ran compose-E2E locally, migrations applied through `13-rls-hardening.sql`, backend tests and frontend build verified.
+
+Notes:
+- Tag created: `v2.0.0` — contains roadmap verification and operational maintenance features. Recommended: run staged rollout and re-run CI compose-E2E in target environment.
+
 
 ### 3. **Database Schema for Alert Thresholds**
 

@@ -224,6 +224,14 @@ if __name__ == '__main__':
                     try:
                         cconn.autocommit = True
                         ccur = cconn.cursor()
+                        # If running against Supabase, set a session-level flag
+                        # so migrations that create policies or rely on service
+                        # role behaviour can detect the runner session.
+                        if is_supabase:
+                            try:
+                                ccur.execute("SELECT set_config('dellmology.is_service_role','true', true)")
+                            except Exception:
+                                pass
                         ccur.execute("SET statement_timeout = 300000")
                         try:
                             # Try executing the full SQL script in one go (works for
@@ -292,6 +300,12 @@ if __name__ == '__main__':
                     raise RuntimeError('Failed to execute autocommit migration statements')
             else:
                 with engine.begin() as conn:
+                    # Ensure session flag is present for Supabase-specific migrations
+                    if is_supabase:
+                        try:
+                            conn.execute(text("SELECT set_config('dellmology.is_service_role','true', true)"))
+                        except Exception:
+                            pass
                     conn.execute(text(sql))
         except Exception as e:
             print(f'Failed to apply {f.name}:', e)

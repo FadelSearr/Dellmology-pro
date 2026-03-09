@@ -1,0 +1,111 @@
+name: Notifier E2E (mock)
+
+on:
+  push:
+    branches:
+      - 'release/**'
+      - 'ci/**'
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run the notifier E2E test (mock server)'
+        required: false
+        default: 'true'
+  schedule:
+    # Daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  # Note: duplicate `push` removed to avoid workflow parse errors
+
+jobs:
+  notifier-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create early CI marker
+        if: always()
+        run: |
+          echo "early-ci-marker: $(date)" > ci_early.txt
+
+      - name: Upload early CI marker
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci_early_marker
+          path: ci_early.txt
+      - name: Run CI health check
+        run: |
+          python apps/ml-engine/scripts/ci_health_check.py 2>&1 | tee ci_health_check.log
+
+      - name: Upload CI health check artifact
+        if: always()
+        run: |
+          echo "Listing ci_health_check.log:" && ls -la ci_health_check.log || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci_health_check
+          path: ci_health_check.log
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Debug: workspace & ensure logs
+        run: |
+          echo "PWD: $(pwd)"
+          mkdir -p apps/ml-engine/logs
+          ls -la apps/ml-engine || true
+          ls -la apps/ml-engine/logs || true
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/ml-engine/requirements.txt
+
+      - name: Run unit tests (TelegramService)
+        run: |
+          python -m pytest -q apps/ml-engine/tests/test_telegram_service.py -q
+        timeout-minutes: 5
+
+      - name: Run notifier E2E (mock Telegram)
+        run: |
+          python apps/ml-engine/scripts/notifier_e2e.py
+        timeout-minutes: 5
+      - name: Archive logs
+        if: always()
+        run: |
+          mkdir -p artifacts
+          ls -la apps/ml-engine/logs || true
+          tar -czf artifacts/notifier-logs.tar.gz -C apps/ml-engine logs || true
+
+      - name: Archive workspace
+        if: always()
+        run: |
+          mkdir -p artifacts
+          tar --exclude='.git' --exclude='venv' -czf artifacts/workspace.tar.gz . || true
+
+      - name: Create CI debug marker
+        if: always()
+        run: |
+          echo "CI run: $(date)" > ci_debug.txt
+          echo "Runner: $RUNNER_OS $RUNNER_TEMP" >> ci_debug.txt || true
+          echo "Listing top-level files:" >> ci_debug.txt
+          ls -la >> ci_debug.txt || true
+
+      - name: Upload notifier artifacts
+        if: always()
+        run: |
+          echo "Artifacts listing:" && ls -la artifacts || true
+          echo "Logs listing:" && ls -la apps/ml-engine/logs || true
+          echo "Other files:" && ls -la ci_health_check.log ci_debug.txt || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: notifier-e2e-artifacts
+          path: |
+            artifacts/*.tar.gz
+            apps/ml-engine/logs/ups_events.jsonl
+            apps/ml-engine/logs/*.log
+            ci_health_check.log
+            ci_debug.txt

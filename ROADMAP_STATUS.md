@@ -1,4 +1,9 @@
 Recent progress (2026-03-08):
+- Ran local integration E2E via `scripts/run_local_e2e.ps1`: `apps/ml-engine` tests executed against the local compose stack — 22 tests passed, 1 skipped.
+- Patched `apps/ml-engine/scripts/run_migrations.py` to execute Timescale/PLpgSQL migration files as a single autocommit statement (preserves dollar-quoted DO blocks). Re-ran migrations successfully; Timescale-specific continuous-aggregate statements are skipped when Supabase credentials are not set.
+ - Reviewed and updated `ROADMAP_STATUS.md` with current repository findings and timestamp.
+CI trigger: bump to re-run migrations smoke (2026-03-08 00:00 UTC)
+Recent progress (2026-03-08):
 - Added a server-side audit verification API (`GET /api/admin/audit/verify`) and wired it into the admin audit UI (`apps/web/src/app/admin/audit/page.tsx`).
 - Added a server-side verification endpoint in `apps/ml-engine/dellmology/api/audit_api.py` and unit tests in `apps/ml-engine/tests/test_audit_verify.py` (passed locally).
 - Implemented admin model controls (retrain/promote/status) and server-side proxy routes in `apps/web/src/app/api/ml/*` and UI at `apps/web/src/app/admin/models/page.tsx`.
@@ -108,3 +113,25 @@ Next recommended steps:
 - Validate Supabase RLS & continuous-aggregate policies once `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available.
 - Add a CI `docker-compose` E2E job that mirrors `scripts/run_local_e2e.ps1` for PR gating.
 - Optional: add lightweight CI smoke for the `screener` and `promotion` pages (headless browser or playwright) to catch runtime regressions.
+
+Local verification (2026-03-08, continued):
+- **Backend tests:** 35 passed, 2 skipped (local run in `apps/ml-engine`).
+- **Frontend build:** Next.js production build succeeded; static pages generated (admin UI routes present).
+- **Maintenance smoke:** exercised `GET /api/maintenance/rls-smoke` (returned `roles: ["anon","service_role"]`, many tables show `rowsecurity: true`) and `POST /api/maintenance/refresh-aggregates` (attempted `CALL refresh_continuous_aggregate` for configured views). Several refresh attempts returned "relation ... does not exist" for materialized views absent in the local test DB — this is expected on a minimal local stack; calls are handled and reported per-view.
+- **Model status (local):** champion present (`champion_v1`), no challenger, `retrain_running: false`.
+
+Recommendations: merge verification branch (`ci/trigger-e2e`) into `main` when ready, then run an automated compose-E2E CI run or repeat local `docker-compose.test-db.yml` + `scripts/run_migrations.py` to validate Supabase/Timescale-specific artifacts in a fully provisioned environment.
+
+Recent addition (evaluation persistence):
+- **Persist evaluations:** Scheduled evaluations now persist results to `public.ml_model_evaluations` (best-effort; table optional) when available.
+- **UPS event:** Each evaluation writes a UPS event to `apps/ml-engine/logs/ups_events.jsonl` so downstream notifiers (UPS/Telegram) can pick up evaluation outcomes.
+ 
+Release & CI updates (2026-03-08):
+- Created release PR branch `release/v2.0.0` with `RELEASE_PR.md` summarizing v2.0.0 changes.
+- Draft GitHub Release created from tag `v2.0.0` (review link printed in CI logs).
+- Added Telegram notifier and test scripts (`apps/ml-engine/scripts/send_telegram_test.py`, `apps/ml-engine/scripts/test_evaluate_notify.py`).
+- Added GitHub Actions workflows for on-demand tests:
+	- `.github/workflows/telegram-e2e.yml` — manual Telegram test (requires `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` secrets).
+	- `.github/workflows/evaluate-promote-e2e.yml` — manual evaluate/promote E2E against `ML_ENGINE_URL` (requires `ML_ENGINE_KEY` or `ADMIN_TOKEN`).
+
+These additions enable safe, manual verification of notification paths and evaluate/promote orchestration in CI while keeping production secrets out of the repository.
