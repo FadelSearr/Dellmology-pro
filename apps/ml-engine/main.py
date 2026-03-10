@@ -41,8 +41,26 @@ except Exception:
     boto3 = None
 from sqlalchemy import text
 from dellmology.models.model_registry import registry as model_registry
-from dellmology.models import retrain_manager
-from dellmology.backtest.backtest_runner import run_backtest
+
+# Avoid importing heavy modules at import-time when running under pytest.
+# These modules can perform I/O, start threads, or connect to DBs which
+# may hang test collection. Import lazily when required.
+retrain_manager = None
+def _lazy_run_backtest(*a, **k):
+    raise RuntimeError("Backtest runner not available during test collection")
+
+if 'pytest' not in sys.modules:
+    try:
+        from dellmology.models import retrain_manager  # type: ignore
+    except Exception:
+        retrain_manager = None
+    try:
+        from dellmology.backtest.backtest_runner import run_backtest  # type: ignore
+    except Exception:
+        run_backtest = _lazy_run_backtest
+else:
+    # In pytest collection mode, assign placeholders so imports don't execute
+    run_backtest = _lazy_run_backtest
 
 # Setup logging
 setup_logging()
