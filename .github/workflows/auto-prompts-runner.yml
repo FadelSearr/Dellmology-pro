@@ -1,0 +1,29 @@
+name: Auto Prompts Runner
+
+on:
+  workflow_dispatch: {}
+  repository_dispatch:
+    types: [auto-prompts-run]
+
+jobs:
+  run-hooks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f scripts/requirements.txt ]; then pip install -r scripts/requirements.txt; fi
+
+      - name: Run auto-prompts runner
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          python scripts/run_auto_prompts.py --config .github/auto-prompts.yml --run-id "${{ github.run_id }}"
