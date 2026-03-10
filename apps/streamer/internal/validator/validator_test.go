@@ -1,8 +1,8 @@
 package validator
 
 import (
-    "testing"
-    "time"
+	"testing"
+	"time"
 )
 
 func TestDetectAggressive(t *testing.T) {

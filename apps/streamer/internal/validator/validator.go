@@ -1,7 +1,7 @@
 package validator
 
 import (
-    "time"
+	"time"
 )
 
 // HakaHakiType represents aggressive trade direction

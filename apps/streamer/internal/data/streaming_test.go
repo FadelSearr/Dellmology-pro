@@ -1,8 +1,8 @@
 package data
 
 import (
-    "encoding/json"
-    "testing"
+	"encoding/json"
+	"testing"
 )
 
 func TestProcessTradeMessage_Aggression(t *testing.T) {
