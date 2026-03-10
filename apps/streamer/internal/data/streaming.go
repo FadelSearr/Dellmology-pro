@@ -4,8 +4,10 @@ package data
 import (
 	"encoding/json"
 	"log"
+	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/dellmology/streamer/internal/validator"
 )
 
 // StreamHandler manages WebSocket connections
@@ -35,6 +37,62 @@ func ProcessTradeMessage(data json.RawMessage) (map[string]interface{}, error) {
 		log.Printf("Error parsing trade message: %v", err)
 		return nil, err
 	}
+
+	// attempt to extract common fields
+	price := 0.0
+	volume := int64(0)
+	if v, ok := trade["price"]; ok {
+		switch x := v.(type) {
+		case float64:
+			price = x
+		case int:
+			price = float64(x)
+		}
+	}
+	if v, ok := trade["volume"]; ok {
+		switch x := v.(type) {
+		case float64:
+			volume = int64(x)
+		case int:
+			volume = int64(x)
+		case int64:
+			volume = x
+		}
+	}
+
+	// extract bid/ask if provided for better aggression detection
+	bid := price - 1.0
+	ask := price + 1.0
+	if v, ok := trade["bid"]; ok {
+		if f, ok2 := v.(float64); ok2 {
+			bid = f
+		}
+	}
+	if v, ok := trade["ask"]; ok {
+		if f, ok2 := v.(float64); ok2 {
+			ask = f
+		}
+	}
+
+	tr := validator.TradeRecord{
+		Symbol:    "",
+		Price:     price,
+		Volume:    volume,
+		Timestamp: time.Now(),
+	}
+	if v, ok := trade["symbol"]; ok {
+		if s, ok2 := v.(string); ok2 {
+			tr.Symbol = s
+		}
+	}
+
+	agg := validator.DetectAggressive(tr, bid, ask)
+	if agg == validator.HAKA {
+		trade["aggression"] = "HAKA"
+	} else if agg == validator.HAKI {
+		trade["aggression"] = "HAKI"
+	}
+
 	return trade, nil
 }
 
