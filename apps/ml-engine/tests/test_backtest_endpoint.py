@@ -11,6 +11,17 @@ def test_models_backtest_endpoint(monkeypatch):
 
     # Import app after setting env
     from main import app
+    # Tests run under pytest which intentionally lazy-loads the real backtest
+    # runner. Patch `run_backtest` with a lightweight stub so the endpoint
+    # returns a deterministic response without invoking heavy I/O.
+    import main as ml_main
+    ml_main.run_backtest = lambda model_name, start_date, end_date: {
+        'model_name': model_name,
+        'trades': 0,
+        'net_return_pct': 0.0,
+        'max_drawdown_pct': 0.0,
+        'sharpe': 0.0
+    }
 
     client = TestClient(app)
 

@@ -168,8 +168,11 @@ def _require_admin(request: Request):
             token = auth.split(' ', 1)[1].strip()
     # If ADMIN_JWT_SECRET is configured, accept and validate JWTs (HS256)
     if token:
-        # Quick path: plain token equality with static ADMIN_TOKEN or ML_ENGINE_KEY
-        if token == Config.ADMIN_TOKEN or token == Config.ML_ENGINE_KEY:
+        # Quick path: accept equality against either the frozen Config values
+        # or current environment variables (tests may set env at runtime).
+        env_admin = os.getenv('ADMIN_TOKEN')
+        env_ml_key = os.getenv('ML_ENGINE_KEY')
+        if token == Config.ADMIN_TOKEN or token == Config.ML_ENGINE_KEY or token == env_admin or token == env_ml_key:
             return
         # Try JWT verification if secret is available
         if Config.ADMIN_JWT_SECRET:
@@ -226,7 +229,10 @@ async def audit_middleware(request: Request, call_next):
         token = request.headers.get('x-admin-token') or request.headers.get('authorization')
         if token and token.startswith('Bearer '):
             token = token.split(' ', 1)[1].strip()
-        if token and (token == Config.ADMIN_TOKEN or token == Config.ML_ENGINE_KEY):
+        # Accept either the frozen Config values or current environment overrides
+        env_admin = os.getenv('ADMIN_TOKEN')
+        env_ml_key = os.getenv('ML_ENGINE_KEY')
+        if token and (token == Config.ADMIN_TOKEN or token == Config.ML_ENGINE_KEY or token == env_admin or token == env_ml_key):
             is_admin = True
         elif token and Config.ADMIN_JWT_SECRET:
             payload = _verify_jwt_hs256(token, Config.ADMIN_JWT_SECRET)
@@ -338,6 +344,17 @@ async def models_backtest(request: Request):
             logger.exception('Failed to save backtest metrics (ignored)')
     except Exception:
         logger.debug('DB not initialized or unavailable; skipping metrics persistence')
+
+    # Also write metrics to a local JSON file for CI artifact collection and
+    # easier debugging of backtest runs. This is best-effort and should not
+    # block the API response.
+    try:
+        metrics_path = Path(__file__).parent / 'model_metrics.json'
+        with open(metrics_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        logger.info(f'Wrote backtest metrics artifact to {metrics_path}')
+    except Exception:
+        logger.exception('Failed to write backtest metrics artifact (ignored)')
 
     # Provide a small compatibility summary expected by the web frontend
     # Prefer canonical keys when present; fall back to closest matches.
