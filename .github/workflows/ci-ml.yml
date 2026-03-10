@@ -41,6 +41,11 @@ jobs:
       - name: Run backtest smoke script
         run: |
           python apps/ml-engine/scripts/run_backtest_smoke.py
+      - name: Upload backtest metrics artifact (if produced)
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest_model_metrics
+          path: apps/ml-engine/model_metrics.json
 
   ml-train-tf:
     name: ML - Train with TensorFlow (CI)
