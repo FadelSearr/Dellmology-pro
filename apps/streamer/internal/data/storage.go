@@ -4,6 +4,8 @@ package data
 import (
 	"database/sql"
 	"log"
+	"math"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -18,6 +20,10 @@ func InitDB(databaseURL string) error {
 		log.Fatalf("Failed to open database: %v", err)
 		return err
 	}
+	// Connection pool tuning
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(30 * time.Minute)
 
 	if err = db.Ping(); err != nil {
 		log.Fatalf("Failed to ping database: %v", err)
@@ -34,10 +40,32 @@ func StoreRawTrade(symbol string, price float64, volume int64, tradeType string)
 		INSERT INTO trades (symbol, price, volume, trade_type, timestamp)
 		VALUES ($1, $2, $3, $4, NOW())
 	`
-	_, err := db.Exec(query, symbol, price, volume, tradeType)
-	if err != nil {
-		log.Printf("Error storing trade: %v", err)
+	var err error
+	// Exponential backoff retry
+	maxAttempts := 5
+	baseDelay := 100 * time.Millisecond
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		_, err = db.Exec(query, symbol, price, volume, tradeType)
+		if err == nil {
+			return nil
+		}
+
+		// If last attempt, break and return error
+		if attempt == maxAttempts {
+			log.Printf("Error storing trade after %d attempts: %v", attempt, err)
+			break
+		}
+
+		// Calculate backoff with jitter
+		backoff := time.Duration(float64(baseDelay) * math.Pow(2, float64(attempt-1)))
+		// Cap the backoff to 5 seconds
+		if backoff > 5*time.Second {
+			backoff = 5 * time.Second
+		}
+		time.Sleep(backoff)
 	}
+
 	return err
 }
 
