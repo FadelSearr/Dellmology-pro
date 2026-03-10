@@ -1,0 +1,8 @@
+enabled: true
+max_chain_depth: 2
+hooks:
+  - name: "roadmap-check"
+    trigger: "on_completion"
+    prompt: "Lakukan pengecekan status ROADMAP.md dan ringkas perubahan terbaru dalam 5 poin." 
+    run_once_per_invocation: true
+    requires_confirmation_for_commits: true
