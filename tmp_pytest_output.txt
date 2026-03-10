@@ -1,0 +1,117 @@
+﻿..F.....F....................ss....                                      [100%]
+================================== FAILURES ===================================
+__________________________ test_api_screen_endpoint ___________________________
+
+    def test_api_screen_endpoint():
+        """FastAPI endpoint /api/screen should return structured JSON."""
+        from fastapi.testclient import TestClient
+        # import the main app defined in ml-engine
+>       from main import app as ml_app
+
+apps\ml-engine\tests\test_advanced_screener.py:42: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    # Python API Entry Point
+    """
+    Main API application using FastAPI
+    Dellmology Pro REST API
+    """
+    
+    import logging
+    from fastapi import FastAPI, Request, HTTPException
+    import base64
+    import json as _json
+    import hmac
+    import hashlib
+    from dellmology.utils.jwks import verify_jwt_rs256
+    from fastapi.middleware.cors import CORSMiddleware
+    from contextlib import asynccontextmanager
+    from datetime import datetime
+    import sys
+    from pathlib import Path
+    import json
+    import os
+    
+    # Setup path for imports
+    sys.path.insert(0, str(Path(__file__).parent))
+    
+    from config import Config, validate_config, setup_logging
+    from dellmology.analysis.screener_api import router as screener_router
+    from dellmology.analysis.runtime_api import router as runtime_router
+    from dellmology.intelligence.api import router as xai_router
+    from dellmology.api.audit_api import router as audit_router
+    from dellmology.api.aggregates_api import router as aggregates_router
+    from dellmology.api.maintenance_api import router as maintenance_router
+    from broker_flow import main as broker_flow_main
+    from exit_whale import main as exit_whale_main
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from dellmology.utils.model_retrain_scheduler import start_scheduler, get_status, reschedule
+    from dellmology.utils.model_retrain_scheduler import start_eval_scheduler, get_eval_status, reschedule_eval
+>   from dellmology.utils.db_utils import init_db, get_db_connection, get_db_health, save_model_metrics
+E   ImportError: cannot import name 'save_model_metrics' from 'dellmology.utils.db_utils' (C:\IDX_Analyst\apps\ml-engine\dellmology\utils\db_utils.py)
+
+apps\ml-engine\main.py:37: ImportError
+________________________ test_models_backtest_endpoint ________________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002D94F7C13D0>
+
+    def test_models_backtest_endpoint(monkeypatch):
+        # Ensure admin token is present before importing the app
+        monkeypatch.setenv('ML_ENGINE_KEY', 'testkey')
+    
+        # Import app after setting env
+>       from main import app
+
+apps\ml-engine\tests\test_backtest_endpoint.py:10: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    # Python API Entry Point
+    """
+    Main API application using FastAPI
+    Dellmology Pro REST API
+    """
+    
+    import logging
+    from fastapi import FastAPI, Request, HTTPException
+    import base64
+    import json as _json
+    import hmac
+    import hashlib
+    from dellmology.utils.jwks import verify_jwt_rs256
+    from fastapi.middleware.cors import CORSMiddleware
+    from contextlib import asynccontextmanager
+    from datetime import datetime
+    import sys
+    from pathlib import Path
+    import json
+    import os
+    
+    # Setup path for imports
+    sys.path.insert(0, str(Path(__file__).parent))
+    
+    from config import Config, validate_config, setup_logging
+    from dellmology.analysis.screener_api import router as screener_router
+    from dellmology.analysis.runtime_api import router as runtime_router
+    from dellmology.intelligence.api import router as xai_router
+    from dellmology.api.audit_api import router as audit_router
+    from dellmology.api.aggregates_api import router as aggregates_router
+    from dellmology.api.maintenance_api import router as maintenance_router
+    from broker_flow import main as broker_flow_main
+    from exit_whale import main as exit_whale_main
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from dellmology.utils.model_retrain_scheduler import start_scheduler, get_status, reschedule
+    from dellmology.utils.model_retrain_scheduler import start_eval_scheduler, get_eval_status, reschedule_eval
+>   from dellmology.utils.db_utils import init_db, get_db_connection, get_db_health, save_model_metrics
+E   ImportError: cannot import name 'save_model_metrics' from 'dellmology.utils.db_utils' (C:\IDX_Analyst\apps\ml-engine\dellmology\utils\db_utils.py)
+
+apps\ml-engine\main.py:37: ImportError
+============================== warnings summary ===============================
+apps/ml-engine/tests/test_advanced_screener.py::test_api_screen_endpoint
+  C:\IDX_Analyst\apps\ml-engine\dellmology\analysis\screener_api.py:9: FastAPIDeprecationWarning: `regex` has been deprecated, please use `pattern` instead
+    async def screener(mode: str = Query('swing', regex='^(swing|daytrade|custom)$'), limit: int = 25):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED apps/ml-engine/tests/test_advanced_screener.py::test_api_screen_endpoint
+FAILED apps/ml-engine/tests/test_backtest_endpoint.py::test_models_backtest_endpoint
+2 failed, 31 passed, 3 skipped, 1 warning in 17.30s

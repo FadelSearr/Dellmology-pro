@@ -41,7 +41,9 @@ def test_api_screen_endpoint():
     # import the main app defined in ml-engine
     from main import app as ml_app
 
-    client = TestClient(ml_app)
+    # Disable ASGI lifespan (startup/shutdown) to avoid starting background
+    # schedulers/notifiers during fast unit tests.
+    client = TestClient(ml_app, lifespan=False)
     payload = {"mode": "DAYTRADE", "min_score": 0.0}
     response = client.post("/api/screen", json=payload)
     assert response.status_code == 200

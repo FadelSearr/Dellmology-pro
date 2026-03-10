@@ -375,21 +375,21 @@ def save_signal_snapshot(snapshot: Dict, signal_type: str = "BUY", table: str = 
         return False
 
 
-    def save_model_metrics(metrics: Dict) -> bool:
-        """
-        Persist arbitrary model/backtest metrics into `model_metrics_jsonb` table.
-        Expects a dict containing at least a `model_name` or `name` key.
-        """
-        import json
-        try:
-            with get_db_connection() as conn:
-                name = metrics.get('model_name') or metrics.get('name') or 'unnamed'
-                q = text("INSERT INTO model_metrics_jsonb (name, metrics) VALUES (:name, :metrics)")
-                conn.execute(q, {
-                    'name': name,
-                    'metrics': json.dumps(metrics)
-                })
-            return True
-        except Exception as e:
-            logger.error(f"Error saving model metrics: {e}")
-            return False
+def save_model_metrics(metrics: Dict) -> bool:
+    """
+    Persist arbitrary model/backtest metrics into `model_metrics_jsonb` table.
+    Expects a dict containing at least a `model_name` or `name` key.
+    """
+    import json
+    try:
+        with get_db_connection() as conn:
+            name = metrics.get('model_name') or metrics.get('name') or 'unnamed'
+            q = text("INSERT INTO model_metrics_jsonb (name, metrics) VALUES (:name, :metrics)")
+            conn.execute(q, {
+                'name': name,
+                'metrics': json.dumps(metrics)
+            })
+        return True
+    except Exception as e:
+        logger.error(f"Error saving model metrics: {e}")
+        return False

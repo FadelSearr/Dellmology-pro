@@ -53,6 +53,12 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle manager replacing deprecated on_event startup."""
     logger.info("Starting Dellmology API...")
+    # If running under pytest, avoid starting background schedulers, notifiers,
+    # or other long-running services to keep tests fast and deterministic.
+    if 'pytest' in sys.modules:
+        logger.info('Detected pytest runner; skipping background schedulers and notifiers')
+        yield
+        return
     if not validate_config():
         logger.error("Configuration validation failed!")
         raise RuntimeError("Invalid configuration")

@@ -1,0 +1,36 @@
+﻿=== RUN   TestCalculateZScore
+--- PASS: TestCalculateZScore (0.00s)
+=== RUN   TestAnalyzeBrokerFlowSmoke
+2026/03/10 22:14:20 Analyzing broker flow for BBCA (last 3 days)
+--- PASS: TestAnalyzeBrokerFlowSmoke (0.20s)
+=== RUN   TestProcessMessage_ValidTrade_WritesToMessages
+--- PASS: TestProcessMessage_ValidTrade_WritesToMessages (0.00s)
+=== RUN   TestProcessMessage_InvalidTrade_Dropped
+2026/03/10 22:14:20 WARN: Dropped invalid trade frame: {BBCA 0 -1 1773155660 REGULER}
+--- PASS: TestProcessMessage_InvalidTrade_Dropped (0.00s)
+=== RUN   TestDetectAnomalies_Spoofing
+--- PASS: TestDetectAnomalies_Spoofing (0.00s)
+=== RUN   TestGenerateHeatmapData_Intensity
+--- PASS: TestGenerateHeatmapData_Intensity (0.00s)
+=== RUN   TestCacheHelpers
+    order_flow_test.go:44: Redis not configured, skipping cache tests
+--- SKIP: TestCacheHelpers (0.00s)
+PASS
+ok  	github.com/dellmology/streamer	(cached)
+?   	github.com/dellmology/streamer/cmd/streamer	[no test files]
+?   	github.com/dellmology/streamer/config	[no test files]
+?   	github.com/dellmology/streamer/internal/analysis	[no test files]
+=== RUN   TestStoreRawTrade_RetrySucceeds
+--- PASS: TestStoreRawTrade_RetrySucceeds (0.10s)
+=== RUN   TestStoreRawTrade_AllAttemptsFail
+2026/03/10 22:14:22 Error storing trade after 5 attempts: canceling query due to user request
+--- PASS: TestStoreRawTrade_AllAttemptsFail (1.50s)
+=== RUN   TestStoreQuoteData_RetrySucceeds
+--- PASS: TestStoreQuoteData_RetrySucceeds (0.10s)
+=== RUN   TestStoreQuoteData_AllAttemptsFail
+2026/03/10 22:14:23 Error storing quote after 5 attempts: canceling query due to user request
+--- PASS: TestStoreQuoteData_AllAttemptsFail (1.51s)
+PASS
+ok  	github.com/dellmology/streamer/internal/data	(cached)
+?   	github.com/dellmology/streamer/internal/models	[no test files]
+?   	github.com/dellmology/streamer/internal/order	[no test files]
