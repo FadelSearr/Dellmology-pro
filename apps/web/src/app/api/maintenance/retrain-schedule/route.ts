@@ -15,7 +15,8 @@ export async function POST(request: NextRequest) {
     })
     const json = await resp.json().catch(() => null)
     return NextResponse.json(json, { status: resp.status })
-  } catch (err: any) {
-    return NextResponse.json({ error: 'Failed to proxy retrain schedule', message: String(err?.message || err) }, { status: 500 })
+  } catch (err: unknown) {
+    const msg = typeof err === 'object' && err !== null && 'message' in err ? String((err as Record<string, unknown>).message) : String(err)
+    return NextResponse.json({ error: 'Failed to proxy retrain schedule', message: msg }, { status: 500 })
   }
 }

@@ -11,6 +11,7 @@ const ChartMain: React.FC<Props> = ({ symbol }) => {
   useEffect(() => {
     if (!ref.current) return
     chartRef.current = createChart(ref.current, { width: ref.current.clientWidth, height: 400, layout: { textColor: '#e5e7eb' } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     seriesRef.current = (chartRef.current as any).addCandlestickSeries()
 
     // initialize with placeholder data
@@ -19,6 +20,7 @@ const ChartMain: React.FC<Props> = ({ symbol }) => {
       { time: now - 60 * 60, open: 100, high: 110, low: 95, close: 105 },
       { time: now - 30 * 60, open: 105, high: 115, low: 100, close: 110 },
       { time: now, open: 110, high: 120, low: 108, close: 115 },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any)
 
     const handleResize = () => {
@@ -32,6 +34,7 @@ const ChartMain: React.FC<Props> = ({ symbol }) => {
   useEffect(() => {
     // symbol change can trigger data fetch; for now, update title
     if (!chartRef.current) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(chartRef.current as any).applyOptions({ watermark: { text: symbol, color: 'rgba(255,255,255,0.08)', visible: true } })
   }, [symbol])
 

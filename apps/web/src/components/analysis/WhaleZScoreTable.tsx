@@ -10,12 +10,19 @@ export default function WhaleZScoreTable({ symbol = 'BBCA' }: { symbol?: string 
 
   useEffect(() => {
     let mounted = true
-    setLoading(true)
-    fetch(`/api/broker/zscore?symbol=${encodeURIComponent(symbol)}&days=7`)
-      .then((r) => r.json())
-      .then((j) => { if (mounted && j.rows) setRows(j.rows) })
-      .catch(() => {})
-      .finally(() => { if (mounted) setLoading(false) })
+    async function load() {
+      setLoading(true)
+      try {
+        const r = await fetch(`/api/broker/zscore?symbol=${encodeURIComponent(symbol)}&days=7`)
+        const j = await r.json()
+        if (mounted && j.rows) setRows(j.rows)
+      } catch {
+        // ignore
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    load()
     return () => { mounted = false }
   }, [symbol])
 
@@ -30,7 +37,7 @@ export default function WhaleZScoreTable({ symbol = 'BBCA' }: { symbol?: string 
           <tr><th>Broker</th><th>Net Volume</th><th>Z-Score</th></tr>
         </thead>
         <tbody>
-          {rows.map((r: any) => (
+          {rows.map((r) => (
             <tr key={r.BrokerCode}>
               <td>{r.BrokerCode}</td>
               <td>{r.NetVolume.toLocaleString()}</td>

@@ -23,6 +23,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Create immediate notifier artifact
+        if: always()
+        run: |
+          echo "notifier-e2e early: $(date)" > ci_notifier_early.txt
+
+      - name: Upload immediate notifier artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notifier_early
+          path: ci_notifier_early.txt
+
       - name: Create early CI marker
         if: always()
         run: |
@@ -38,10 +50,17 @@ jobs:
         run: |
           python apps/ml-engine/scripts/ci_health_check.py 2>&1 | tee ci_health_check.log
 
-      - name: Upload CI health check artifact
+      - name: Ensure CI health check log exists
+        if: always()
+        run: |
+          if [ ! -f ci_health_check.log ]; then echo 'dummy log' > ci_health_check.log; fi
+      - name: Show CI health check log
         if: always()
         run: |
           echo "Listing ci_health_check.log:" && ls -la ci_health_check.log || true
+
+      - name: Upload CI health check artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ci_health_check
@@ -101,12 +120,15 @@ jobs:
           echo "Listing top-level files:" >> ci_debug.txt
           ls -la >> ci_debug.txt || true
 
-      - name: Upload notifier artifacts
+      - name: List notifier artifacts to upload
         if: always()
         run: |
           echo "Artifacts listing:" && ls -la artifacts || true
           echo "Logs listing:" && ls -la apps/ml-engine/logs || true
           echo "Other files:" && ls -la ci_health_check.log ci_debug.txt || true
+
+      - name: Upload notifier artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: notifier-e2e-artifacts

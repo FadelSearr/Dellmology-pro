@@ -1,0 +1,36 @@
+param(
+    [int]$PrNumber = 11,
+    [int]$IntervalSeconds = 3600,
+    [int]$Limit = 50
+)
+
+Write-Output "Starting PR monitor loop for PR #$PrNumber (interval ${IntervalSeconds}s)"
+while ($true) {
+    try {
+        & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/monitor_pr_runs.ps1 -PrNumber $PrNumber -Limit $Limit
+        # Run auto-fix runner after fetching logs; it will be a no-op if no fixes apply.
+        & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/auto_fix_pr_failures.ps1 -PrNumber $PrNumber
+        # Check PR checks summary and merge if all checks passed
+        try {
+            $checks = gh pr checks $PrNumber --repo FadelSearr/Dellmology-pro 2>$null
+            if ($checks -match "0 failing, 0 pending") {
+                Write-Output "All checks passed — merging PR #$PrNumber"
+                $mergeResult = gh pr merge $PrNumber --repo FadelSearr/Dellmology-pro --merge --delete-branch --confirm 2>$null
+                Write-Output $mergeResult
+                # notify via Telegram if configured
+                try {
+                    $msg = "PR #$PrNumber merged: https://github.com/FadelSearr/Dellmology-pro/pull/$PrNumber"
+                    & powershell -NoProfile -ExecutionPolicy Bypass -File scripts/send_telegram.ps1 -Message $msg
+                } catch {
+                    Write-Error "Telegram notify failed: $_"
+                }
+                break
+            }
+        } catch {
+            Write-Error "Failed to evaluate PR checks: $_"
+        }
+    } catch {
+        Write-Error "Monitor run failed: $_"
+    }
+    Start-Sleep -Seconds $IntervalSeconds
+}

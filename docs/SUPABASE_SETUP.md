@@ -4,9 +4,6 @@ This document describes the minimal environment variables and steps to run the R
 
 Required environment variables (example):
 
-- `DATABASE_URL` - full Postgres connection string for a test database (preferred for local runs)
-- `SUPABASE_URL` - optional Supabase project URL (used by some scripts)
-- `SUPABASE_SERVICE_ROLE_KEY` - service role key (ONLY for CI/local testing against a throwaway DB)
 
 Security note: Do NOT use production credentials here. Use a throwaway/test Supabase project or a local Postgres instance (e.g. via docker-compose).
 
@@ -34,9 +31,7 @@ python apps/ml-engine/scripts/run_migrations.py
 
 CI guidance
 
-- A helper workflow `.github/workflows/rls-smoke.yml` exists and will run `check_supabase_rls.py` when secrets are configured. Set the following repo secrets for the workflow to perform a real check:
   - `SUPABASE_TEST_DATABASE_URL` or `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
 
-- The workflow is intentionally permissive (it will not fail if secrets are missing) — it's a smoke helper.
 
 If you need me to wire an optional self-hosted TimescaleDB stack for CI to run a full integration, I can add a docker-compose job and make the workflow run a deterministic DB for tests.

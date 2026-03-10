@@ -12,6 +12,7 @@ interface Broker {
 const WhaleTable: React.FC = () => {
   const { lastEvent } = useSSE((process.env.NEXT_PUBLIC_STREAMER_URL || '') + '/stream/broker-analysis')
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const brokers: Broker[] = ((lastEvent as any)?.brokers as Broker[]) || []
 
   return (

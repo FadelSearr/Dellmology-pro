@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     if (!res.ok) return NextResponse.json({ error: 'upstream error' }, { status: res.status })
     const data = await res.json()
     return NextResponse.json(data)
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: 'failed to fetch screener' }, { status: 502 })
   }
 }

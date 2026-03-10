@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 
+type AuditEntry = Record<string, unknown>
+
 export default function AuditPage() {
-  const [entries, setEntries] = useState<any[]>([])
+  const [entries, setEntries] = useState<AuditEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -16,10 +18,17 @@ export default function AuditPage() {
         const txt = await res.text()
         throw new Error(txt || 'failed')
       }
-      const json = await res.json()
-      setEntries(json.entries || [])
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load')
+      const body = await res.json()
+      if (typeof body === 'object' && body !== null && 'entries' in body && Array.isArray((body as Record<string, unknown>).entries)) {
+        setEntries((body as Record<string, unknown>).entries as AuditEntry[])
+      } else {
+        setEntries([])
+      }
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed to load'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -29,16 +38,19 @@ export default function AuditPage() {
     setLoading(true)
     try {
       const res = await fetch('/api/admin/audit?older_than_days=365', { method: 'POST' })
-      const json = await res.json()
+      await res.json()
       setEntries([])
-    } catch (err: any) {
-      setError(err?.message || 'Failed to clear')
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'Failed to clear'
+      setError(msg)
     } finally {
       setLoading(false)
     }
   }
 
-  const [verifyResult, setVerifyResult] = useState<any | null>(null)
+  const [verifyResult, setVerifyResult] = useState<unknown | null>(null)
   async function verifyChain() {
     setLoading(true)
     setVerifyResult(null)
@@ -47,14 +59,17 @@ export default function AuditPage() {
       const json = await res.json()
       if (res.ok) setVerifyResult(json)
       else setVerifyResult({ error: json.error || 'verify failed' })
-    } catch (err: any) {
-      setVerifyResult({ error: err?.message || 'failed' })
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'failed'
+      setVerifyResult({ error: msg })
     } finally {
       setLoading(false)
     }
   }
 
-  const [evalResult, setEvalResult] = useState<any | null>(null)
+  const [evalResult, setEvalResult] = useState<unknown | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [pendingAutoPromote, setPendingAutoPromote] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -78,8 +93,11 @@ export default function AuditPage() {
         setToast(auto ? 'Evaluate & Promote completed' : 'Evaluation completed')
         setTimeout(() => setToast(null), 4500)
       }
-    } catch (err: any) {
-      setEvalResult({ error: err?.message || 'failed' })
+    } catch (err: unknown) {
+      const msg = typeof err === 'object' && err !== null && 'message' in err && typeof (err as Record<string, unknown>).message === 'string'
+        ? ((err as Record<string, { message: string }>).message)
+        : String(err) || 'failed'
+      setEvalResult({ error: msg })
     } finally {
       setLoading(false)
       setShowConfirm(false)
@@ -112,16 +130,29 @@ export default function AuditPage() {
               </tr>
             </thead>
             <tbody>
-              {entries.map((e: any) => (
-                <tr key={e.id}>
-                  <td>{e.id}</td>
-                  <td>{e.table_name}</td>
-                  <td>{e.operation}</td>
-                  <td>{e.changed_by}</td>
-                  <td>{new Date(e.changed_at).toLocaleString()}</td>
-                  <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>{JSON.stringify(e.payload)}</td>
-                </tr>
-              ))}
+              {entries.map((e) => {
+                const id = (e as Record<string, unknown>).id
+                const table = (e as Record<string, unknown>).table_name
+                const op = (e as Record<string, unknown>).operation
+                const by = (e as Record<string, unknown>).changed_by
+                const at = (e as Record<string, unknown>).changed_at
+                const payload = (e as Record<string, unknown>).payload
+                const renderVal = (v: unknown) => {
+                  if (v === null || v === undefined) return ''
+                  if (typeof v === 'object') return JSON.stringify(v)
+                  return String(v)
+                }
+                return (
+                  <tr key={String(id)}>
+                    <td>{renderVal(id)}</td>
+                    <td>{renderVal(table)}</td>
+                    <td>{renderVal(op)}</td>
+                    <td>{renderVal(by)}</td>
+                    <td>{at ? new Date(String(at)).toLocaleString() : ''}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>{renderVal(payload)}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}

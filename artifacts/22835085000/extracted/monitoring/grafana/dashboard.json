@@ -1,0 +1,31 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Dellmology - Streamer Overview",
+    "tags": ["dellmology","streamer"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "type": "row",
+        "title": "ML & Stream Metrics",
+        "collapse": false
+      },
+      {
+        "type": "graph",
+        "title": "ML Fetch Failures",
+        "targets": [
+          { "expr": "ml_fetch_failures_total", "legendFormat": "failures" }
+        ]
+      },
+      {
+        "type": "graph",
+        "title": "ML Fetch Latency (ms)",
+        "targets": [
+          { "expr": "ml_fetch_latency_ms_sum / ml_fetch_latency_count", "legendFormat": "mean_latency_ms" }
+        ]
+      }
+    ],
+    "schemaVersion": 16,
+    "version": 1
+  }
+}

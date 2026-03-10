@@ -139,9 +139,6 @@ Powered by Dellmology Pro
 ## Alert Cooldown
 
 To avoid spam, alerts have a **5-minute cooldown** per symbol per alert type. This means:
-- BBCA BUY signal sends, then next BBCA BUY won't send for 5 min
-- But BBCA SELL signal can send immediately
-- Another stock's signals aren't affected
 
 ## Integration Points
 
@@ -195,10 +192,6 @@ POST /api/telegram-alert
 ## Troubleshooting
 
 ### "Not Connected" in Settings
-- Check `.env` file has `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
-- Verify bot token is correct
-- Ensure bot is added to the chat
-- Restart telegram_service.py
 
 ### Alerts Not Being Sent
 1. Check bot is still in the chat (if group)
@@ -207,14 +200,8 @@ POST /api/telegram-alert
 4. Confirm alert type is enabled in Settings
 
 ### Wrong Chat Receiving Messages
-- Double-check chat ID in `.env`
-- Get fresh chat ID using @BotFather method above
-- Restart docker or service
 
 ### Rate Limited
-- Telegram allows ~30 messages per second
-- Our 5-minute cooldown prevents most issues
-- If still limited, increase cooldown value in `telegram_notifier.py`
 
 ## Health Check
 
@@ -240,9 +227,6 @@ self.alert_cooldown = 600  # 10 minutes instead of 5
 ### Alert Chain
 
 Combine condition triggers in `alert_trigger.py`:
-- UPS > 80 AND Whale detected → STRONG_BUY
-- UPS < 30 AND Downtrend → STRONG_SELL
-- Regime change UP + Volume spike → BUY
 
 ### Batch Sending
 
@@ -267,7 +251,3 @@ For production use:
 ## Support
 
 Issues or questions?
-- Check logs: `docker logs dellmology-ml-engine`
-- Verify environment variables are set
-- Test bot token: `curl https://api.telegram.org/botYOUR_TOKEN/getMe`
-- Ensure Python service is running: `curl http://localhost:8001/health`

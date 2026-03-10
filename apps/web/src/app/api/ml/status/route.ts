@@ -15,11 +15,12 @@ export async function GET(){
     const data = await res.json().catch(() => null)
     if (!data) return NextResponse.json({ error: 'Invalid JSON from ML engine' }, { status: 502 })
     return NextResponse.json(data)
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timeout)
-    if (err.name === 'AbortError') {
+    if (typeof err === 'object' && err !== null && 'name' in err && (err as Record<string, unknown>).name === 'AbortError') {
       return NextResponse.json({ error: 'Request to ML engine timed out' }, { status: 504 })
     }
-    return NextResponse.json({ error: 'Failed to fetch ML engine', message: String(err?.message || err) }, { status: 502 })
+    const msg = typeof err === 'object' && err !== null && 'message' in err ? String((err as Record<string, unknown>).message) : String(err)
+    return NextResponse.json({ error: 'Failed to fetch ML engine', message: msg }, { status: 502 })
   }
 }

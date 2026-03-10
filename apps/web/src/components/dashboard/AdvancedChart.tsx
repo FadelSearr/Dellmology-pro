@@ -41,6 +41,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
     chartRef.current = chart;
 
     // Add candlestick series
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const candlestickSeries = (chart as any).addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#ef4444',
@@ -51,6 +52,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
     });
 
     // Add volume series (using histogram)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const volumeSeries = (chart as any).addHistogramSeries({
       color: '#26c6da',
       title: 'Volume',
@@ -85,6 +87,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
     };
 
     // Add 20-day SMA (Simple Moving Average)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const smaLine20 = (chart as any).addLineSeries({
       color: '#f59e0b',
       lineWidth: 2,
@@ -92,6 +95,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
     });
 
     // Add 50-day SMA
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const smaLine50 = (chart as any).addLineSeries({
       color: '#8b5cf6',
       lineWidth: 2,

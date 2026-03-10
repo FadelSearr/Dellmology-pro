@@ -11,7 +11,7 @@ export async function GET() {
       const data = await res.json().catch(() => null)
       if (data) return NextResponse.json(data)
     }
-  } catch (e) {
+  } catch {
     // ignore and fallback
   }
 
@@ -24,7 +24,7 @@ export async function GET() {
     if (yahooRes.ok) {
       const j = await yahooRes.json().catch(() => null)
       const results = (j?.quoteResponse?.result) || []
-      const map: Record<string, any> = {}
+      const map: Record<string, number | null> = {}
       for (const r of results) {
         if (r.symbol === 'GC=F') map.gold = r.regularMarketChangePercent || null
         if (r.symbol === 'CL=F') map.coal = r.regularMarketChangePercent || null
@@ -34,7 +34,7 @@ export async function GET() {
       map.nickel = null
       return NextResponse.json(map)
     }
-  } catch (e) {
+  } catch {
     // ignore
   }
 

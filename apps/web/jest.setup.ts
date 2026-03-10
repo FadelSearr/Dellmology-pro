@@ -12,14 +12,16 @@ if (!global.TextDecoder) {
 // Suppress React testing-library act() warnings that are noisy in our CI logs.
 // We still allow other console.error messages to surface.
 const originalConsoleError = console.error;
-console.error = (...args: any[]) => {
+console.error = (...args: unknown[]) => {
 	try {
-		const msg = args[0] && typeof args[0] === 'string' ? args[0] : '';
+		const first = args[0];
+		const msg = typeof first === 'string' ? first : '';
 		if (msg.includes('not wrapped in act') || msg.includes('An update to')) {
 			return;
 		}
-	} catch (e) {
+	} catch {
 		// fall through to original
 	}
-	originalConsoleError.apply(console, args as any);
+	// Call original console.error with unknown args without using `any`.
+	(originalConsoleError as unknown as (...a: unknown[]) => void)(...args);
 };

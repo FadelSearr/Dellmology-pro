@@ -1,0 +1,49 @@
+name: Evaluate-Promote E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      auto_promote:
+        description: 'Set to true to request auto_promote'
+        required: false
+        default: 'false'
+
+jobs:
+  run-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify secrets
+        run: |
+          if [ -z "${{ secrets.ML_ENGINE_URL }}" ]; then
+            echo "ML_ENGINE_URL secret not set; set ML_ENGINE_URL in repo secrets to run this workflow.";
+            exit 1
+          fi
+          if [ -z "${{ secrets.ML_ENGINE_KEY }}" ] && [ -z "${{ secrets.ADMIN_TOKEN }}" ]; then
+            echo "ML_ENGINE_KEY or ADMIN_TOKEN not set; set one of these secrets to authenticate against the ML engine.";
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/ml-engine/requirements.txt
+
+      - name: Run evaluate-promote test
+        env:
+          ML_ENGINE_URL: ${{ secrets.ML_ENGINE_URL }}
+          ML_ENGINE_KEY: ${{ secrets.ML_ENGINE_KEY }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          if [ "${{ github.event.inputs.auto_promote }}" = 'true' ]; then
+            python apps/ml-engine/scripts/test_evaluate_notify.py --auto --url "${ML_ENGINE_URL}"
+          else
+            python apps/ml-engine/scripts/test_evaluate_notify.py --url "${ML_ENGINE_URL}"
+          fi
