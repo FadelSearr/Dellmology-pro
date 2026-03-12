@@ -34,6 +34,7 @@ from dellmology.api.telegram_api import router as telegram_api_router
 from dellmology.api.exit_whale_api import router as exit_whale_router
 from dellmology.api.admin_api import router as admin_router
 from dellmology.api.narrative_api import router as narrative_router
+from dellmology.api.watchlist_api import router as watchlist_router
 from broker_flow import main as broker_flow_main
 from exit_whale import main as exit_whale_main
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -449,6 +450,8 @@ app.include_router(exit_whale_router)
 app.include_router(admin_router)
 app.include_router(narrative_router)
 app.include_router(ai_screener_router)
+
+app.include_router(watchlist_router)
 
 # Include routers
 app.include_router(screener_router)
