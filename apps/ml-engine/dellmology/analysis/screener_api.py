@@ -132,6 +132,7 @@ class ScreeningRequest(BaseModel):
     min_score: float = 0.6
     symbols: Optional[List[str]] = None
     include_analysis: bool = True
+    use_llm: bool = False
 
 
 class StockScoreResponse(BaseModel):
@@ -257,7 +258,7 @@ async def run_screening(request: ScreeningRequest, _=Depends(rate_limit_dep)):
                     "stats": stats,
                     "top_pick": response_results[0] if response_results else None,
                     "results": [r.model_dump() for r in response_results],
-                }, symbol=response_results[0].symbol if response_results else None)
+                }, symbol=response_results[0].symbol if response_results else None, use_llm=request.use_llm)
             except Exception as ex:
                 logger.warning(f"AI narrative generation failed: {ex}")
                 ai_text = None

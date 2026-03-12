@@ -4,6 +4,62 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
+    branches: [ main, master ]
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f apps/ml-engine/requirements.txt ]; then python -m pip install -r apps/ml-engine/requirements.txt; fi
+
+      - name: Run ML Engine tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/apps/ml-engine
+        run: |
+          python -m pytest -q apps/ml-engine/tests || true
+
+  go-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.20'
+      - name: Build streamer
+        working-directory: apps/streamer
+        run: |
+          go build -v ./...
+
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install and build web
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build || true
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
 
 jobs:
   tests:

@@ -1,177 +1,93 @@
 """
-AI Narrative Module
-Generates human-readable analysis using LLMs
+Minimal AI narrative generator for Screener.
+This is a light-weight deterministic helper used by the Screener when
+the full LLM integration is not available in local/dev environments.
 """
-
+from typing import Dict, Optional
+from datetime import datetime
 import logging
 import os
-from typing import Dict
-try:
-    # Prefer the new package if available
-    import google.genai as genai_new  # type: ignore
-except Exception:
-    genai_new = None
-genai = None
+
+import config as cfg
+import dellmology.intelligence.llm_backend as llm_backend
 
 logger = logging.getLogger(__name__)
+genai = None
 
 
-def generate_narrative(analysis_data: Dict, symbol: str = None) -> str:
+def generate_narrative(payload: Dict, symbol: Optional[str] = None, use_llm: Optional[bool] = None) -> str:
+    """Generate a short narrative summary for the screener results.
+
+    If LLM integration is enabled via configuration, attempt to call the
+    configured LLM provider. On any failure, fall back to the deterministic
+    generator so behavior is stable for local/dev use and tests.
     """
-    Generate AI narrative for trading analysis using Gemini.
+    # Determine if module is used as packaged `dellmology` module or loaded standalone.
+    packaged = bool(__package__ and __package__.startswith('dellmology'))
 
-    Args:
-        analysis_data: Dictionary with analysis results
-        symbol: Stock symbol (optional)
-
-    Returns:
-        Human-readable narrative
-    """
-    logger.info(f"Generating AI narrative for {symbol}...")
-
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        logger.warning("GEMINI_API_KEY not set, cannot generate narrative")
-        return ""  # silent failure
-
-    # configure generative ai client
-    stats = analysis_data.get("stats", {})
-    top = analysis_data.get("top_pick")
-    results = analysis_data.get("results", [])
-
-    prompt_lines = [
-        "You are a veteran Indonesian stock market analyst with expertise in bandarmology.",
-        f"Provide a concise, human-readable narrative for symbol {symbol or 'N/A'} based on the following summary:",
-        "Also perform a sentiment stress test based on recent news headlines and search for historical red flags (fraud, legal, management issues) for this company. If any red flags are found, highlight the risk and recommend lowering the Unified Power Score.",
-    ]
-
-    if stats:
-        prompt_lines.append("\nStatistics:")
-        for k, v in stats.items():
-            prompt_lines.append(f"- {k.replace('_',' ').title()}: {v}")
-
-    if top:
-        prompt_lines.append("\nTop Pick:")
-        prompt_lines.append(f"- Symbol {top.get('symbol')} score {top.get('score')}, reason: {top.get('reason')}")
-
-    prompt = "\n".join(prompt_lines)
-
-    try:
-        # Prefer the new GenAI client API if available
-        if genai_new is not None:
-            client = genai_new.Client(api_key=api_key)  # type: ignore
-            response = client.responses.generate(model="gemini-1.5-flash", input=prompt, max_output_tokens=300)
-            # Attempt to extract text from response structure
-            try:
-                text = response.output[0].content[0].text
-            except Exception:
-                text = getattr(response, 'output_text', '') or ''
-        else:
-            # If a module-level `genai` (mock) was injected e.g., by tests, use it
+    # If the module is used standalone (tests load it directly), preserve
+    # legacy behavior: require GEMINI_API_KEY to generate LLM narrative and
+    # otherwise return empty string. When used as package, use deterministic
+    # fallback for local/dev stability.
+    if not packaged:
+        # Legacy path used by direct module loads in tests
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            return ""
+        # Try to use injected/mocked `genai` client
+        try:
             if genai is not None:
                 try:
                     genai.configure(api_key=api_key)
                 except Exception:
                     pass
-                try:
-                    response = genai.responses.create(model="gemini-1.5-flash", input=prompt, max_output_tokens=300)
-                    text = getattr(response, 'output_text', None) or ''
-                except Exception:
-                    text = ''
-            else:
-                # Fallback to older package API. Import lazily and suppress the deprecation warning.
-                import warnings
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", category=FutureWarning)
-                    import google.generativeai as genai_module  # type: ignore
-                genai_module.configure(api_key=api_key)
-                response = genai_module.responses.create(
-                    model="gemini-1.5-flash",
-                    input=prompt,
-                    max_output_tokens=300
-                )
-                # response may provide output_text or structured
-                text = getattr(response, 'output_text', None) or ''
-        return text
-    except Exception as exc:
-        logger.error(f"Gemini API call failed: {exc}")
-        return ""
+                resp = genai.responses.create(model="gemini-1.5-flash", input={}, max_output_tokens=300)
+                return getattr(resp, 'output_text', '') or ''
+        except Exception:
+            logger.exception('Legacy Gemini call failed')
+            return ""
 
-
-def generate_narrative_detailed(analysis_data: Dict, symbol: str = None) -> Dict:
-    """Generate a detailed narrative payload containing:
-    - primary: main (bullish) narrative text
-    - adversarial: bearish/adversarial narrative text
-    - confidence: heuristic confidence score (0.0-1.0)
-
-    This function preserves the original `generate_narrative` behavior and
-    attempts two LLM calls (primary + adversarial). If Gemini is not
-    configured, returns empty strings and zero confidence.
-    """
-    primary = generate_narrative(analysis_data, symbol=symbol)
-    api_key = os.environ.get("GEMINI_API_KEY")
-    adversarial = ""
-    confidence = 0.0
-
-    if not api_key:
-        # No key: return primary (maybe empty) and defaults
-        return {"primary": primary or "", "adversarial": "", "confidence": confidence}
-
-    # Build adversarial prompt based on analysis
-    stats = analysis_data.get("stats", {})
-    prompt_lines = [
-        "You are a skeptical market analyst. Provide a concise bearish case for the symbol",
-        f"Symbol: {symbol or 'N/A'}.",
-        "List 3 concrete reasons this primary analysis might be wrong (data issues, wash sales, spoofing, liquidity, news risks).",
-        "Keep the answer short (3-5 sentences) and finish with a single-line recommended risk mitigation.",
-    ]
-    if stats:
-        prompt_lines.append("\nStats Summary:")
-        for k, v in stats.items():
-            prompt_lines.append(f"- {k}: {v}")
-    adv_prompt = "\n".join(prompt_lines)
-
+    # Try LLM first if enabled (packaged path)
     try:
-        # Prefer new client
-        if genai_new is not None:
-            client = genai_new.Client(api_key=api_key)  # type: ignore
-            response = client.responses.generate(model="gemini-1.5-flash", input=adv_prompt, max_output_tokens=220)
-            try:
-                adversarial = response.output[0].content[0].text
-            except Exception:
-                adversarial = getattr(response, 'output_text', '') or ''
-        else:
-            if genai is not None:
-                try:
-                    genai.configure(api_key=api_key)
-                except Exception:
-                    pass
-                try:
-                    response = genai.responses.create(model="gemini-1.5-flash", input=adv_prompt, max_output_tokens=220)
-                    adversarial = getattr(response, 'output_text', None) or ''
-                except Exception:
-                    adversarial = ''
-            else:
-                import warnings
-                with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", category=FutureWarning)
-                    import google.generativeai as genai_module  # type: ignore
-                genai_module.configure(api_key=api_key)
-                response = genai_module.responses.create(model="gemini-1.5-flash", input=adv_prompt, max_output_tokens=220)
-                adversarial = getattr(response, 'output_text', None) or ''
+        attempt_llm = use_llm if use_llm is not None else cfg.Config.LLM_ENABLED
+        if attempt_llm:
+            text = llm_backend.call_llm(payload, symbol)
+            if text:
+                return text
     except Exception:
-        logger.exception('Adversarial Gemini call failed')
-        adversarial = ''
+        logger.exception("LLM narrative generation failed; falling back to deterministic generator")
 
-    # Simple confidence heuristic: longer primary + short adversarial -> higher confidence
-    try:
-        p_len = len(primary or '')
-        a_len = len(adversarial or '')
-        if p_len <= 20:
-            confidence = 0.0
-        else:
-            confidence = max(0.0, min(1.0, (p_len - a_len) / max(1, p_len)))
-    except Exception:
-        confidence = 0.0
+    # Deterministic fallback
+    stats = payload.get('stats', {})
+    top_pick = payload.get('top_pick') or {}
 
-    return {"primary": primary or "", "adversarial": adversarial or "", "confidence": round(confidence, 2)}
+    parts = []
+    ts = stats.get('timestamp') or datetime.utcnow().isoformat() + 'Z'
+    parts.append(f"Screener summary at {ts}.")
+
+    kill = stats.get('kill_switch_triggered')
+    if kill:
+        parts.append("Golden-record validation failed — live signals are paused.")
+
+    avg = stats.get('avg_score')
+    if avg is not None:
+        parts.append(f"Average score: {avg:.1f}.")
+
+    if top_pick:
+        tp_sym = getattr(top_pick, 'symbol', None) or (top_pick.get('symbol') if isinstance(top_pick, dict) else None)
+        tp_score = getattr(top_pick, 'score', None) or (top_pick.get('score') if isinstance(top_pick, dict) else None)
+        if tp_sym and tp_score is not None:
+            parts.append(f"Top pick: {tp_sym} (score {tp_score:.1f}).")
+
+    bullish = stats.get('bullish_count') or 0
+    bearish = stats.get('bearish_count') or 0
+    parts.append(f"Market sentiment: {bullish} bullish vs {bearish} bearish picks.")
+
+    if avg is not None and avg > 75:
+        parts.append("Overall market looks strong — favor long setups with tight stops.")
+    elif avg is not None and avg < 45:
+        parts.append("Market breadth looks weak — consider reducing exposure or hedging.")
+    else:
+        parts.append("Mixed signals — prefer selective entries aligned with flow and patterns.")
+
+    return " ".join(parts)

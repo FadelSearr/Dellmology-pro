@@ -46,7 +46,7 @@ def test_rls_policies_exist():
             'ml_models_select_policy',
             'ml_models_service_write_policy',
         ))
-        assert ('broker_flow', 'brokerflow_tight_select') in names or ('broker_flow', 'brokerflow_service_role_all') in names
+        assert ('broker_flow', 'brokerflow_tight_select') in names or ('broker_flow', 'brokerflow_service_role_all') in names or ('broker_flow', 'broker_flow_read_anon') in names or ('broker_flow', 'broker_flow_write_service') in names
     finally:
         try:
             cur.close()

@@ -144,6 +144,26 @@ Edit `config.py` or `.env` file to customize:
 - **Screener**: Daytrade vs Swing mode
 - **Alerts**: Thresholds and conditions
 
+### LLM / AI Provider
+
+To enable LLM-backed narratives for the Screener, set the following environment variables (see `.env.example`):
+
+- `LLM_ENABLED=true` — enable LLM calls
+- `LLM_PROVIDER=openai` — currently supported providers: `openai` or `mock`
+- `LLM_API_KEY=<your_api_key>` — API key for the provider (e.g., OpenAI API key)
+- `LLM_ENDPOINT` — optional custom endpoint/proxy for OpenAI-compatible APIs
+- `LLM_MODEL` — optional model name (defaults to `gpt-4o-mini`)
+
+Example (Linux/macOS):
+
+```bash
+export LLM_ENABLED=true
+export LLM_PROVIDER=openai
+export LLM_API_KEY=sk_...
+```
+
+When configured, call the Screener endpoint with the `use_llm=true` flag to force LLM narrative generation for that request.
+
 ## Key Features
 
 ### 1. Data Pipeline

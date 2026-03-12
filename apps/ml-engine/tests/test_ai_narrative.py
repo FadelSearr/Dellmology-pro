@@ -1,3 +1,23 @@
+from dellmology.intelligence.ai_narrative import generate_narrative
+
+
+def test_generate_narrative_basic():
+    payload = {
+        'stats': {
+            'timestamp': '2026-03-11T00:00:00Z',
+            'avg_score': 80.5,
+            'bullish_count': 5,
+            'bearish_count': 1,
+            'kill_switch_triggered': False,
+        },
+        'top_pick': {'symbol': 'BBCA', 'score': 92.3},
+        'results': []
+    }
+
+    text = generate_narrative(payload, symbol='BBCA')
+    assert 'Top pick' in text
+    assert 'Average score' in text
+    assert 'Market sentiment' in text
 import os
 import sys, importlib.util
 import pytest
