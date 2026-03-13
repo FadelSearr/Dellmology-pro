@@ -1,0 +1,38 @@
+name: Per-file Pytest Runner
+
+on:
+  push:
+    paths:
+      - 'apps/ml-engine/**'
+      - '.scripts/**'
+  workflow_dispatch: {}
+
+jobs:
+  per-file-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f apps/ml-engine/requirements.txt ]; then python -m pip install -r apps/ml-engine/requirements.txt; fi
+
+      - name: Ensure logs dir
+        run: mkdir -p apps/ml-engine/test_logs
+
+      - name: Run per-file test runner
+        run: |
+          python .scripts/run_each_test.py | tee apps/ml-engine/test_logs/run_each_test_output.log
+
+      - name: Upload test logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-engine-test-logs
+          path: apps/ml-engine/test_logs/**
