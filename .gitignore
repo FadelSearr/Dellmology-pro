@@ -55,3 +55,18 @@ c:/IDX_Analyst/apps/web/.next/
 .env.example
 .env
 .env.dum
+
+# Local LLM and caches
+.cache/
+.cache/gpt4all/
+
+# Python virtualenvs
+.venv/
+venv/
+
+# CI/artifacts
+artifacts/
+runs/
+
+# OS-specific temp
+*.tar.gz
