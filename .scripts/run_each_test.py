@@ -24,13 +24,15 @@ for f in files:
     cmd = [PY, '-m', 'pytest', '-q', f]
     print('\nRunning', f)
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        # Run pytest and stream output directly to the log file to avoid
+        # losing data on large outputs or timeouts. Increase timeout to
+        # 900s to accommodate longer integration tests.
         with open(out_log, 'w', encoding='utf-8') as fh:
             fh.write('CMD: ' + ' '.join(cmd) + '\n\n')
-            fh.write(res.stdout or '')
-            fh.write('\n--- STDERR ---\n')
-            fh.write(res.stderr or '')
-        combined = (res.stdout or '') + '\n' + (res.stderr or '')
+            res = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, text=True, timeout=900)
+        # Read combined output for heuristics
+        with open(out_log, 'r', encoding='utf-8') as fh:
+            combined = fh.read()
         # Treat files that only contain module-level skips or collect 0 items as OK
         if res.returncode == 0:
             print(name, 'OK')
@@ -49,10 +51,17 @@ for f in files:
                 print(name, 'FAILED (code', res.returncode, ') see', out_log)
                 summary.append((name, 'FAILED', res.returncode, out_log))
     except subprocess.TimeoutExpired:
-        print(name, 'TIMED OUT (300s)')
-        with open(out_log, 'w', encoding='utf-8') as fh:
-            fh.write('TIMEOUT')
+        print(name, 'TIMED OUT (900s)')
+        # Append timeout marker to the existing log so we keep partial output
+        with open(out_log, 'a', encoding='utf-8') as fh:
+            fh.write('\n\n--- TIMEOUT (900s) ---\n')
         summary.append((name, 'TIMEOUT'))
+    except Exception as e:
+        print(name, 'ERROR', e)
+        with open(out_log, 'a', encoding='utf-8') as fh:
+            fh.write('\n\n--- ERROR ---\n')
+            fh.write(str(e))
+        summary.append((name, 'ERROR', str(e)))
 
 print('\nSummary:')
 for s in summary:

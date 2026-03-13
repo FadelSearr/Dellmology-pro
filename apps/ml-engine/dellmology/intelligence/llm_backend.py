@@ -29,16 +29,22 @@ def preload_local_model(model_path: Optional[str] = None):
     if _cached_llm is not None:
         return True
     try:
-        mpath = model_path or os.getenv('LLM_MODEL') or cfg.Config.LLM_MODEL or ''
+        mpath = model_path or os.getenv('LLM_MODEL') or getattr(cfg.Config, 'LLM_MODEL', '') or ''
+        logger.debug(f"preload_local_model: model_path_arg={model_path!r}, env_LLM_MODEL={os.getenv('LLM_MODEL')!r}, cfg_LLM_MODEL={getattr(cfg.Config,'LLM_MODEL','')!r}")
         if not mpath:
+            logger.warning('No LLM model path configured; set LLM_MODEL or see docs/LLM_PRELOAD.md for setup')
             return False
         p = Path(mpath)
+        logger.debug(f"preload_local_model: checking path {p}")
         if p.is_dir():
             for f in p.iterdir():
                 if f.suffix.lower() == '.gguf':
                     mpath = str(f)
                     break
+        logger.debug(f"preload_local_model: resolved mpath={mpath}")
         if not Path(mpath).is_file():
+            logger.warning(f"LLM model file not found at {mpath}; verify path and permissions. See docs/LLM_PRELOAD.md for guidance.")
+            logger.debug(f"preload_local_model: file not found at {mpath}")
             return False
         try:
             from llama_cpp import Llama
@@ -50,6 +56,7 @@ def preload_local_model(model_path: Optional[str] = None):
             # marking the local model as "preloaded" when the file exists so
             # status checks and admin tooling can proceed in local dev.
             logger.warning(f"llama_cpp not available or failed to load model: {e}; marking model present for local dev")
+            logger.debug('llama_cpp exception details', exc_info=True)
             _cached_llm = True  # sentinel indicating model file present but not in-memory Llama
             return True
     except Exception:
@@ -61,11 +68,13 @@ def preload_local_model(model_path: Optional[str] = None):
 def local_model_status(model_path: Optional[str] = None) -> Dict:
     """Return status information about the local gguf model and preload state."""
     global _cached_llm
-    mpath = model_path or os.getenv('LLM_MODEL') or cfg.Config.LLM_MODEL or ''
+    mpath = model_path or os.getenv('LLM_MODEL') or getattr(cfg.Config, 'LLM_MODEL', '') or ''
+    logger.debug(f"local_model_status: model_path_arg={model_path!r}, resolved_mpath={mpath!r}")
     found = None
     try:
         if mpath:
             p = Path(mpath)
+            logger.debug(f"local_model_status: checking {p}")
             if p.is_file() and p.suffix.lower() == '.gguf':
                 found = str(p)
             elif p.is_dir():
@@ -73,6 +82,7 @@ def local_model_status(model_path: Optional[str] = None) -> Dict:
                     if f.suffix.lower() == '.gguf':
                         found = str(f)
                         break
+            logger.debug(f"local_model_status: found={found}")
     except Exception:
         found = None
 
@@ -172,7 +182,7 @@ def call_llm(payload: Dict, symbol: Optional[str] = None) -> Optional[str]:
 
         elif provider in ('mock', 'local'):
             # Prefer to run a local gguf model via llama-cpp-python if available.
-            model_path = os.getenv('LLM_MODEL') or cfg.Config.LLM_MODEL or ''
+            model_path = os.getenv('LLM_MODEL') or getattr(cfg.Config, 'LLM_MODEL', '') or ''
             # If model_path is a directory, search for a .gguf file inside
             try:
                 if model_path:
@@ -316,7 +326,7 @@ def validate_key(api_key: str, provider: Optional[str] = None, model: Optional[s
                 return {'ok': False, 'detail': str(e)}
         elif prov in ('mock', 'local'):
             # Validate local model file presence
-            model_path = model or os.getenv('LLM_MODEL') or cfg.Config.LLM_MODEL or ''
+            model_path = model or os.getenv('LLM_MODEL') or getattr(cfg.Config, 'LLM_MODEL', '') or ''
             try:
                 if model_path:
                     p = Path(model_path)
